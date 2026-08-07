@@ -177,3 +177,32 @@ def test_auth_section_without_the_provider_subsection_refuses_to_start(st):
     with pytest.raises(Stop):
         auth.require_login()
     assert "auth.google" in st._calls["error"][0]
+
+
+# --- deployment prerequisites ----------------------------------------------
+
+
+def test_requirements_declares_authlib():
+    """st.login() raises StreamlitMissingAuthlibError before it even validates
+    credentials, so a missing Authlib breaks login on the deployed app while
+    every local test still passes. google-auth-oauthlib is a DIFFERENT package
+    and does not satisfy it."""
+    import pathlib
+
+    req = (pathlib.Path(__file__).resolve().parents[2] / "requirements.txt").read_text()
+    declared = [
+        line.split("#")[0].strip().lower()
+        for line in req.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    assert any(d.startswith("authlib") for d in declared), (
+        "requirements.txt must declare Authlib>=1.3.2 for st.login() to work"
+    )
+
+
+def test_authlib_is_actually_importable():
+    """Catches the deployed failure locally: the package must resolve, not just
+    be listed."""
+    from streamlit.auth_util import is_authlib_installed
+
+    assert is_authlib_installed(), "Authlib is not installed; st.login() will fail"
