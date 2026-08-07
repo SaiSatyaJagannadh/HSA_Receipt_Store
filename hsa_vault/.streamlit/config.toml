@@ -1,0 +1,19 @@
+# HSAVault has no login screen: whoever reaches the port gets full read/write on
+# your HSA records and, through the cached OAuth token, on your Google Drive.
+# Streamlit binds to 0.0.0.0 by default, which puts all of that on your local
+# network. Bind to loopback instead.
+[server]
+address = "127.0.0.1"
+headless = true
+enableCORS = true
+enableXsrfProtection = true
+
+# Receipt images and provider names are medical data. Don't phone home.
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+# Tracebacks stay on: the server is bound to loopback, so the only person who can
+# read them is you, and redacting them makes a failed Drive write undebuggable.
+showErrorDetails = true

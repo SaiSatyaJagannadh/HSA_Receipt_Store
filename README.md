@@ -50,81 +50,83 @@ Confirm your own eligibility with a qualified tax professional.
 
 ## Google Cloud setup
 
-You need a service account. It has its own email address; you share your Drive
-folder and Sheet with it, exactly as you would with a colleague. There is no
-OAuth consent screen and no token to refresh.
+You authenticate as **yourself** over OAuth. Files created by the app are owned
+by you, which is the point: your records have to outlive both this app and the
+Cloud project it was built in.
+
+> **Why not a service account?** The original design used one. It cannot work on
+> a personal Google account: a service account has no Drive storage of its own,
+> so every file it creates fails with `403 storageQuotaExceeded` — verified
+> against the live API. The usual fix is to put the files in a Shared Drive, but
+> Shared Drives are a Google Workspace feature. If you *are* on Workspace, point
+> `GOOGLE_CREDENTIALS_JSON` at a service account key instead and it will be
+> detected and used automatically.
 
 ### 1. Create a project
 
 1. Go to <https://console.cloud.google.com/projectcreate>.
-2. Name it something like `hsa-vault`. Click **Create**.
-3. Make sure it is the selected project in the top bar before continuing.
+2. Name it `hsa-vault`. Click **Create**, then select it in the top bar.
 
 ### 2. Enable the two APIs
 
-1. <https://console.cloud.google.com/apis/library/drive.googleapis.com> →
-   **Enable**.
-2. <https://console.cloud.google.com/apis/library/sheets.googleapis.com> →
-   **Enable**.
+1. <https://console.cloud.google.com/apis/library/drive.googleapis.com> → **Enable**
+2. <https://console.cloud.google.com/apis/library/sheets.googleapis.com> → **Enable**
 
-### 3. Create the service account
+### 3. Configure the OAuth consent screen
 
-1. Go to <https://console.cloud.google.com/iam-admin/serviceaccounts> →
-   **+ Create service account**.
-2. Name: `hsa-vault`. Click **Create and continue**.
-3. Skip the optional role and user-access steps — **Done**.
+Under **Google Auth Platform → Overview → Get started**:
 
-### 4. Download the JSON key
+1. **App name** `HSAVault`, user support email = your address.
+2. **Audience** → **External**. (Internal needs Workspace.)
+3. **Contact information** → your address.
+4. Agree to the API services user data policy → **Create**.
 
-1. Click the service account you just made → **Keys** tab.
-2. **Add key → Create new key → JSON → Create**. A `.json` file downloads.
-3. Move it next to this README as `service_account.json`.
+Then **Audience → Test users → Add users** and add your own Gmail address.
+Without this, consent is refused with `access_denied`.
 
-   ```sh
-   mv ~/Downloads/hsa-vault-*.json ./service_account.json
-   chmod 600 service_account.json
-   ```
+> **Testing vs production.** While the app is in *Testing*, refresh tokens expire
+> after **7 days** and you re-consent weekly. To stop that, hit **Publish app**
+> on the Audience page. Publishing an unverified app with the Drive scope shows a
+> "Google hasn't verified this app" interstitial at consent — click **Advanced →
+> Go to HSAVault (unsafe)**. That warning is expected: the "app" is this code
+> running on your own machine, and no one else can reach it.
 
-   This file is a credential. It is already covered by `.gitignore` — keep it
-   out of version control and out of backups you share.
+### 4. Create a Desktop OAuth client
 
-### 5. Copy the service account email
+**Clients → Create client → Application type: Desktop app**, name it
+`HSAVault desktop`, **Create**, then **Download JSON**.
 
-On the service account's **Details** tab, copy the email. It looks like:
+Save it next to this README as `credentials.json`:
+
+```sh
+mv ~/Downloads/client_secret_*.json ./credentials.json
+chmod 600 credentials.json
+```
+
+It is gitignored. A desktop-app client secret is not treated as confidential by
+OAuth (it cannot be kept secret in a distributed binary), but the access token it
+mints is — that lands in `~/.hsavault/token.json`, mode 600.
+
+### 5. Create the Drive folder
+
+Create a folder named `HSA_Vault` in your Drive. No sharing needed — you own it
+and you are the one authenticating. Copy its ID from the URL:
 
 ```
-hsa-vault@hsa-vault-123456.iam.gserviceaccount.com
+https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^ this
 ```
 
-### 6. Create and share the Drive folder
+### 6. First run grants consent
 
-1. In Google Drive, create a folder named `HSA_Vault`.
-2. Right-click it → **Share**, paste the service account email, set it to
-   **Editor**, uncheck "Notify people", **Share**.
-3. Open the folder and copy its ID from the URL:
+`scripts/bootstrap_sheet.py --create` opens a browser once, you click **Allow**,
+and the token is cached. Everything after that is silent until the token is
+revoked. Run it from a terminal, not from inside Streamlit.
 
-   ```
-   https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz
-                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^ this
-   ```
+### 7. Revoking access
 
-### 7. Create and share the Sheet
-
-You can let the bootstrap script create it (step 3 of Running below), or do it
-by hand:
-
-1. Create a Google Sheet named `HSA Vault Index`.
-2. Share it with the same service account email as **Editor**.
-3. Copy its ID from the URL:
-
-   ```
-   https://docs.google.com/spreadsheets/d/1XyZ.../edit
-                                         ^^^^^^^ this
-   ```
-
-> **If you get a 403 or "file not found"**, the cause is almost always that the
-> folder or sheet was not shared with the service account email. Re-check step 6
-> and step 7.
+<https://myaccount.google.com/permissions> → HSAVault → Remove access. Then
+`rm ~/.hsavault/token.json`.
 
 ### 8. NVIDIA API key
 
@@ -157,13 +159,13 @@ python3 -m venv .venv
 
 # 2. Configure
 cp .env.example .env
-$EDITOR .env          # paste the folder ID, sheet ID, and API key
+$EDITOR .env          # paste the Drive folder ID and (optionally) the NVIDIA key
 
 cd hsa_vault
 
-# 3. Create the Sheet tabs with the right headers
-#    Add --create to also create the spreadsheet itself in your Drive folder.
-../.venv/bin/python -m scripts.bootstrap_sheet
+# 3. Grant consent and create the Sheet. Opens a browser once; click Allow.
+#    Prints the new sheet ID — paste it into .env as HSA_SHEET_ID.
+../.venv/bin/python -m scripts.bootstrap_sheet --create
 
 # 4. (Optional) Sample data so the UI isn't empty
 ../.venv/bin/python -m scripts.seed_data
@@ -175,6 +177,21 @@ cd hsa_vault
 Everything in `.env` is also editable in the app's **Settings** page, which
 writes `~/.hsavault/settings.json`. That file wins over `.env`; your `.env` is
 never modified.
+
+### Security posture
+
+**HSAVault has no login screen.** Whoever reaches the port gets full read/write
+on your records and, through the cached token, on your Google Drive.
+`.streamlit/config.toml` therefore binds the server to `127.0.0.1` — Streamlit's
+own default is `0.0.0.0`, which would publish all of that to your local network.
+
+**Do not deploy this to Streamlit Community Cloud as-is.** Three reasons: the
+OAuth flow used here opens a browser on the machine running the code, which a
+hosted server cannot do; there is no authentication, so the URL alone would grant
+a stranger your medical expense history; and your receipts would transit a third
+party. Hosting it would mean a Web OAuth client with a redirect URI, real
+authentication in front of the app, and secrets in `st.secrets` — a different
+threat model than the one this code was written for.
 
 ### Optional system dependency
 
@@ -238,6 +255,10 @@ tests exist to protect — see `tests/test_ledger.py`.
   `_archive/`.
 - **Duplicates are blocked by SHA-256**, including against archived receipts.
 - **Retries** with exponential backoff wrap every Google and NVIDIA call.
+- **Untrusted text is escaped**, not trusted. Provider names come from a model
+  reading a stranger's printout; they are escaped before reaching the PDF's
+  markup parser, stored with `valueInputOption=RAW` so `=IMPORTXML(...)` is text
+  rather than a live formula, and `drive_link` is dropped unless it is http(s).
 - **Graceful degradation.** No API key, a rate limit, an outage, or a model that
   replies with prose instead of JSON — extraction fails softly and manual entry
   always works. The app never blocks a save.
@@ -253,7 +274,7 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-75 tests, no network. `test_ledger.py` covers the balance math: HSA-card
+95 tests, no network. `test_ledger.py` covers the balance math: HSA-card
 exclusion, partial reimbursements, multi-receipt withdrawals, tax-year
 boundaries, and duplicate rejection. `test_extraction_parsing.py` mocks the
 OpenAI SDK entirely and covers the tolerant reply parsing — fenced JSON, chatty
