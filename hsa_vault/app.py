@@ -6,10 +6,12 @@ from decimal import Decimal
 import pandas as pd
 import streamlit as st
 
-from core import ledger, store
+from core import auth, ledger, store
 from core.models import PAYMENT_LABELS
 
 st.set_page_config(page_title="HSAVault", page_icon="🧾", layout="wide")
+
+auth.require_login()
 
 FOOTER = (
     "HSAVault is a personal record-keeping tool. It is **not tax advice**. "

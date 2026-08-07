@@ -4,10 +4,12 @@ from dataclasses import asdict, replace
 
 import streamlit as st
 
-from core import config, store
+from core import auth, config, store
 from core.models import PAYMENT_LABELS, PAYMENT_METHODS
 
 st.set_page_config(page_title="Settings — HSAVault", page_icon="⚙️", layout="wide")
+
+auth.require_login()
 st.title("⚙️ Settings")
 
 settings = store.settings()

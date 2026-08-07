@@ -52,11 +52,24 @@ CATEGORIES must be exactly one of:
 Rules:
 - Return null for any field you cannot read with confidence. Never guess, never
   infer a plausible value, never substitute today's date.
-- service_date is the date of service or purchase printed on the receipt. If the
-  receipt shows only a transaction date, use that and say so in ambiguities.
-- total_amount is what was actually paid, after any insurance adjustment or
-  discount. If several totals appear, pick the amount due/paid by the patient and
-  note the ambiguity. Digits and a decimal point only — no currency symbol.
+- service_date is the date of service or purchase printed anywhere on the page.
+  It is often labelled "Order placed", "Order date", "Date of service", "Visit
+  date", "Transaction date", or just printed near the header. Read the whole
+  image before concluding a date is absent. Prefer the order/purchase date over a
+  delivery, ship, or return-window date, and note the choice in ambiguities.
+- provider is the merchant or clinic. Take it from the letterhead, logo, store
+  header, app chrome, or a "Sold by" / "Supplied by" line. An online order from a
+  retailer has that retailer as the provider.
+- total_amount is the ONE final amount actually paid. Look for the line labelled
+  "Grand Total", "Total", "Amount Paid", "Amount Due", or "Balance Due". It
+  includes tax and reflects any discount or insurance adjustment.
+  It is NOT a line-item price and NOT a pre-tax subtotal. When a summary lists
+  Subtotal, Shipping, Discount, Tax and Grand Total, the answer is the Grand
+  Total — the largest, bottom-most total, not the item price above it.
+  Digits and a decimal point only — no currency symbol, no thousands separator.
+- Do not mark a purely cosmetic or general-wellness item (makeup, anti-ageing or
+  moisturising skincare, vitamins, food) as a qualified medical expense. Set
+  is_medical_expense false and eligibility_confidence "review" for those.
 - category must be one of the listed values, or null if none clearly fits.
 - eligibility_confidence: "certain" if this is unambiguously a qualified medical
   expense, "likely" if it probably is, "review" if it is unclear, non-medical, or

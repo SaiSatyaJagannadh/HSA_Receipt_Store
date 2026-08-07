@@ -5,9 +5,11 @@ from decimal import Decimal
 
 import streamlit as st
 
-from core import ledger, pdf_export, store
+from core import auth, ledger, pdf_export, store
 
 st.set_page_config(page_title="Export — HSAVault", page_icon="📄", layout="wide")
+
+auth.require_login()
 st.title("📄 Audit packet export")
 
 if store.settings().ready():

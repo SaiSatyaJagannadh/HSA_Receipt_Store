@@ -8,7 +8,7 @@ from datetime import date, datetime, timezone
 
 import streamlit as st
 
-from core import extraction, ledger, store
+from core import auth, extraction, ledger, store
 from core.models import (
     CATEGORIES,
     CONFIDENCE_LEVELS,
@@ -21,6 +21,8 @@ from core.models import (
 from core.util import sha256_hex
 
 st.set_page_config(page_title="Bulk Import — HSAVault", page_icon="📥", layout="wide")
+
+auth.require_login()
 st.title("📥 Bulk import")
 
 if store.settings().ready():

@@ -6,10 +6,12 @@ from decimal import Decimal
 import pandas as pd
 import streamlit as st
 
-from core import ledger, store
+from core import auth, ledger, store
 from core.models import Contribution, money
 
 st.set_page_config(page_title="Contributions — HSAVault", page_icon="🏦", layout="wide")
+
+auth.require_login()
 st.title("🏦 Contributions")
 
 if store.settings().ready():

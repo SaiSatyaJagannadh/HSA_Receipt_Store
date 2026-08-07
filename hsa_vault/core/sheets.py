@@ -106,6 +106,37 @@ class SheetsClient:
         self._write(f"{tab}!A{row_number}", [row])
         audit("sheets.update", tab=tab, row=row_number, key=row[0] if row else "")
 
+    def _tab_gid(self, tab: str) -> int:
+        for sheet in self._metadata().get("sheets", []):
+            if sheet["properties"]["title"] == tab:
+                return sheet["properties"]["sheetId"]
+        raise KeyError(f"no tab named {tab}")
+
+    def delete_rows(self, tab: str, row_numbers: list[int]) -> int:
+        """Really remove rows, rather than blanking them and leaving gaps.
+
+        Deletes bottom-up so earlier indices stay valid as the sheet shrinks.
+        """
+        if not row_numbers:
+            return 0
+        gid = self._tab_gid(tab)
+        requests = [
+            {
+                "deleteDimension": {
+                    "range": {
+                        "sheetId": gid,
+                        "dimension": "ROWS",
+                        "startIndex": n - 1,  # API is 0-based; row 1 is the header
+                        "endIndex": n,
+                    }
+                }
+            }
+            for n in sorted(row_numbers, reverse=True)
+        ]
+        self._batch_update(requests)
+        audit("sheets.delete_rows", tab=tab, count=len(requests))
+        return len(requests)
+
     def upsert_row(self, tab: str, row: list[str]) -> None:
         existing = self.row_number_of(tab, row[0])
         if existing:
