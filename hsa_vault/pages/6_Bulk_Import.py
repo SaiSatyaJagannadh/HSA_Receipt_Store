@@ -44,8 +44,8 @@ with tab_orphans:
     )
     if st.button("Scan for orphans"):
         with st.spinner("Listing Drive…"):
-            st.session_state.orphans = store.find_orphans()
-    orphans = st.session_state.get("orphans", [])
+            st.session_state["_hsa_orphans"] = store.find_orphans()
+    orphans = st.session_state.get("_hsa_orphans", [])
     if orphans:
         st.error(f"{len(orphans)} orphaned file(s).")
         for f in orphans:

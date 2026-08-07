@@ -56,7 +56,7 @@ if require_setup():
     if st.session_state.get("_hsa_orphans"):
         with st.container(border=True):
             st.error(
-                f"⚠️ {len(st.session_state["_hsa_orphans"])} file(s) in Drive have no row in the "
+                f"⚠️ {len(st.session_state['_hsa_orphans'])} file(s) in Drive have no row in the "
                 "index. This happens if a Drive upload succeeded but the Sheets write "
                 "failed. Repair them in **Bulk Import**."
             )
