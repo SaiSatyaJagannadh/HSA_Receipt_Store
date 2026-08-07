@@ -28,7 +28,7 @@ def slugify(text: str, maxlen: int = 40) -> str:
 
 
 def retry(tries: int = 5, base: float = 1.0, cap: float = 30.0, exceptions=(Exception,)):
-    """Exponential backoff with jitter. Wraps every Google/Anthropic network call."""
+    """Exponential backoff with jitter. Wraps every Google/NVIDIA network call."""
 
     def deco(fn):
         @functools.wraps(fn)

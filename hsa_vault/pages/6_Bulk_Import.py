@@ -96,7 +96,7 @@ with tab_scan:
                 queue.append({"meta": meta, "duplicate": duplicate, "hash": file_hash})
                 continue
             pages = extraction.normalize(data, meta["name"])
-            result = extraction.extract(pages, settings.anthropic_api_key, settings.anthropic_model)
+            result = extraction.extract(pages, settings.nvidia_api_key, settings.nvidia_model, settings.nvidia_base_url)
             queue.append({"meta": meta, "hash": file_hash, "result": result})
         progress.empty()
         st.session_state.import_queue = queue

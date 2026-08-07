@@ -26,15 +26,15 @@ with st.form("settings"):
     drive_folder_id = c1.text_input("Drive folder ID", value=settings.drive_folder_id)
     sheet_id = c2.text_input("Sheet ID", value=settings.sheet_id)
 
-    st.subheader("Anthropic")
+    st.subheader("NVIDIA (receipt extraction)")
     c3, c4 = st.columns(2)
-    anthropic_api_key = c3.text_input(
-        "API key", value=settings.anthropic_api_key, type="password",
+    nvidia_api_key = c3.text_input(
+        "API key", value=settings.nvidia_api_key, type="password",
         help="Leave blank to disable extraction. Manual entry always works.",
     )
-    anthropic_model = c4.text_input(
-        "Model", value=settings.anthropic_model,
-        help="Must support vision and structured outputs.",
+    nvidia_model = c4.text_input(
+        "Model", value=settings.nvidia_model,
+        help="Any NVIDIA NIM vision model, e.g. meta/llama-3.2-90b-vision-instruct.",
     )
 
     st.subheader("Defaults")
@@ -67,8 +67,8 @@ with st.form("settings"):
                 service_account_json=service_account_json.strip(),
                 drive_folder_id=drive_folder_id.strip(),
                 sheet_id=sheet_id.strip(),
-                anthropic_api_key=anthropic_api_key.strip(),
-                anthropic_model=anthropic_model.strip(),
+                nvidia_api_key=nvidia_api_key.strip(),
+                nvidia_model=nvidia_model.strip(),
                 default_payment_method=default_payment_method,
                 default_patient=default_patient.strip(),
                 projection_rate=float(projection_rate),
@@ -160,8 +160,8 @@ if config.AUDIT_PATH.exists():
 
 with st.expander("Current effective settings"):
     redacted = asdict(settings)
-    if redacted.get("anthropic_api_key"):
-        redacted["anthropic_api_key"] = "***"
+    if redacted.get("nvidia_api_key"):
+        redacted["nvidia_api_key"] = "***"
     st.json(redacted)
 
 st.caption("Not tax advice.")

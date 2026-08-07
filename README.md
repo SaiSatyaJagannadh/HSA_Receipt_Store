@@ -25,9 +25,9 @@ Confirm your own eligibility with a qualified tax professional.
 ## What it does
 
 - **Upload** receipts (JPG/PNG/HEIC/PDF). Originals go to Drive **unmodified**;
-  only a downscaled copy is sent to Claude for extraction.
-- **Extract** provider, date, amount, category, and line items with Claude vision,
-  returning `null` rather than guessing, and listing what was unclear.
+  only a downscaled copy is sent to the vision model for extraction.
+- **Extract** provider, date, amount, category, and line items with an NVIDIA NIM
+  vision model, returning `null` rather than guessing, and listing what was unclear.
 - **Confirm** every extraction in a form before anything is written. Nothing
   auto-commits.
 - **Track** two kinds of receipt separately, because confusing them causes
@@ -126,10 +126,25 @@ by hand:
 > folder or sheet was not shared with the service account email. Re-check step 6
 > and step 7.
 
-### 8. Anthropic API key
+### 8. NVIDIA API key
 
-Get one at <https://console.anthropic.com/settings/keys>. Optional — leave it
-blank and the app still works with fully manual entry.
+Get one at <https://build.nvidia.com> — open any model and click **Get API Key**.
+It starts with `nvapi-`. Optional: leave it blank and the app still works with
+fully manual entry.
+
+Extraction goes through NVIDIA's OpenAI-compatible endpoint
+(`https://integrate.api.nvidia.com/v1`), so the model is a config value rather
+than a code change. Free-endpoint vision models that work here:
+
+| Model | Notes |
+|---|---|
+| `meta/llama-3.2-90b-vision-instruct` | Default. Strongest general reading. |
+| `meta/llama-3.2-11b-vision-instruct` | Faster and cheaper, less accurate on faint print. |
+| `nvidia/nemotron-nano-12b-v2-vl` | Multi-image and document Q&A. |
+| `nvidia/llama-3.1-nemotron-nano-vl-8b-v1` | Tuned for document intelligence. |
+
+Point `NVIDIA_BASE_URL` at your own host to run a self-hosted NIM container
+instead.
 
 ---
 
@@ -163,8 +178,9 @@ never modified.
 
 ### Optional system dependency
 
-Multi-page PDFs are split into per-page images using `poppler`. Without it, PDFs
-are handed to Claude as a document instead — which also works.
+Multi-page PDFs are rasterized into per-page images using `poppler`. Vision
+models take images only, so without it a PDF upload still saves to Drive but
+extraction is skipped and you fill the fields in by hand.
 
 ```sh
 brew install poppler        # macOS
@@ -221,9 +237,10 @@ tests exist to protect — see `tests/test_ledger.py`.
 - **Nothing is hard-deleted.** Archiving flags the row and moves the file to
   `_archive/`.
 - **Duplicates are blocked by SHA-256**, including against archived receipts.
-- **Retries** with exponential backoff wrap every Google and Anthropic call.
-- **Graceful degradation.** No API key, a rate limit, an outage — extraction
-  fails softly and manual entry always works. The app never blocks a save.
+- **Retries** with exponential backoff wrap every Google and NVIDIA call.
+- **Graceful degradation.** No API key, a rate limit, an outage, or a model that
+  replies with prose instead of JSON — extraction fails softly and manual entry
+  always works. The app never blocks a save.
 - **Orphan detection.** If a Drive upload succeeds and the Sheets write fails,
   the file is flagged on next launch and repairable from **Bulk Import**.
 
@@ -236,10 +253,11 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-65 tests, no network. `test_ledger.py` covers the balance math: HSA-card
+75 tests, no network. `test_ledger.py` covers the balance math: HSA-card
 exclusion, partial reimbursements, multi-receipt withdrawals, tax-year
 boundaries, and duplicate rejection. `test_extraction_parsing.py` mocks the
-Anthropic SDK entirely.
+OpenAI SDK entirely and covers the tolerant reply parsing — fenced JSON, chatty
+preambles, invented categories, and currency symbols in the amount.
 
 ---
 
@@ -256,7 +274,7 @@ hsa_vault/
     ledger.py             All balance math. Pure functions.
     drive.py              Folder tree, upload, move, download
     sheets.py             Tab bootstrap, read, append, upsert
-    extraction.py         Normalization + Claude vision
+    extraction.py         Normalization + NVIDIA NIM vision
     cache.py              SQLite mirror
     pdf_export.py         Audit packet, CSV, ZIP
     store.py              App-facing layer over the above
@@ -267,8 +285,9 @@ hsa_vault/
 
 ## Note on the model
 
-The build spec named `claude-sonnet-4-6`. That model does not support structured
-JSON outputs, which the extraction path relies on for strict schema conformance,
-so the default is `claude-opus-5` (vision + structured outputs). Change it in
-`.env` (`ANTHROPIC_MODEL`) or the Settings page — anything with vision and
-structured-output support will work.
+The build spec named Claude. Extraction now runs on NVIDIA NIM instead, at the
+owner's request. Because NIM models honour `response_format` inconsistently, the
+JSON contract is stated in the prompt and the reply is parsed defensively —
+markdown fences, a chatty preamble, an invented category, or `$1,042.18` in the
+amount field are all handled rather than trusted. Swap models with
+`NVIDIA_MODEL`; nothing else in the codebase knows which model is in use.

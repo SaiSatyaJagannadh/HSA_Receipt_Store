@@ -1,5 +1,5 @@
 streamlit>=1.40
-anthropic>=0.116
+openai>=1.60
 google-api-python-client>=2.150
 google-auth>=2.35
 python-dotenv>=1.0

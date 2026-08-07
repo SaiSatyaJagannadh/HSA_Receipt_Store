@@ -36,7 +36,8 @@ uploads = st.file_uploader(
 if not uploads:
     st.info(
         "Drop in one or more receipts. Each is hashed for duplicate detection, sent to "
-        "Claude for extraction, and shown to you for confirmation before anything is saved."
+        "the vision model for extraction, and shown to you for confirmation before "
+        "anything is saved."
     )
     st.stop()
 
@@ -185,7 +186,7 @@ for upload in uploads:
             with st.spinner("Reading the receipt…"):
                 pages = extraction.normalize(raw_bytes, upload.name)
                 st.session_state[cache_key] = extraction.extract(
-                    pages, settings.anthropic_api_key, settings.anthropic_model
+                    pages, settings.nvidia_api_key, settings.nvidia_model, settings.nvidia_base_url
                 )
         result: extraction.Extraction = st.session_state[cache_key]
 

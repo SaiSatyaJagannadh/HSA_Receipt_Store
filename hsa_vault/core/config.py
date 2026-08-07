@@ -15,6 +15,8 @@ from .util import set_audit_path
 
 load_dotenv()
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 STATE_DIR = Path(os.getenv("HSA_STATE_DIR", Path.home() / ".hsavault"))
 SETTINGS_PATH = STATE_DIR / "settings.json"
 CACHE_PATH = STATE_DIR / "cache.sqlite"
@@ -24,13 +26,26 @@ STATE_DIR.mkdir(parents=True, exist_ok=True)
 set_audit_path(AUDIT_PATH)
 
 
+def resolve_path(value: str) -> Path:
+    """A relative key path is resolved against the CWD first, then the repo root.
+
+    The app is launched from hsa_vault/ but the key lives next to the README, so
+    a bare './service_account.json' has to work from either directory.
+    """
+    path = Path(value).expanduser()
+    if path.is_absolute() or path.exists():
+        return path
+    return REPO_ROOT / path
+
+
 @dataclass
 class Settings:
     service_account_json: str = ""
     drive_folder_id: str = ""
     sheet_id: str = ""
-    anthropic_api_key: str = ""
-    anthropic_model: str = "claude-opus-5"
+    nvidia_api_key: str = ""
+    nvidia_model: str = "meta/llama-3.2-90b-vision-instruct"
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     default_payment_method: str = "out_of_pocket"
     default_patient: str = "self"
     projection_rate: float = 0.07
@@ -47,7 +62,7 @@ class Settings:
     def ready(self) -> list[str]:
         """Returns the list of missing things that block Google access."""
         missing = []
-        if not self.service_account_json or not Path(self.service_account_json).exists():
+        if not self.service_account_json or not resolve_path(self.service_account_json).exists():
             missing.append("service account JSON path")
         if not self.drive_folder_id:
             missing.append("Drive folder ID")
@@ -60,8 +75,9 @@ _ENV_MAP = {
     "service_account_json": "GOOGLE_SERVICE_ACCOUNT_JSON",
     "drive_folder_id": "HSA_DRIVE_FOLDER_ID",
     "sheet_id": "HSA_SHEET_ID",
-    "anthropic_api_key": "ANTHROPIC_API_KEY",
-    "anthropic_model": "ANTHROPIC_MODEL",
+    "nvidia_api_key": "NVIDIA_API_KEY",
+    "nvidia_model": "NVIDIA_MODEL",
+    "nvidia_base_url": "NVIDIA_BASE_URL",
     "default_payment_method": "HSA_DEFAULT_PAYMENT_METHOD",
     "default_patient": "HSA_DEFAULT_PATIENT",
     "projection_rate": "HSA_PROJECTION_RATE",
@@ -110,5 +126,5 @@ def build_credentials(service_account_json: str):
     from google.oauth2 import service_account
 
     return service_account.Credentials.from_service_account_file(
-        service_account_json, scopes=SCOPES
+        str(resolve_path(service_account_json)), scopes=SCOPES
     )

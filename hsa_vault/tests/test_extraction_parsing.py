@@ -14,27 +14,31 @@ import pytest
 from core import extraction
 
 
-# --- fake anthropic SDK ----------------------------------------------------
+# --- fake openai SDK pointed at NVIDIA -------------------------------------
 
 
-class FakeBlock:
-    def __init__(self, text):
-        self.type = "text"
-        self.text = text
+class FakeMessage:
+    def __init__(self, content):
+        self.content = content
+
+
+class FakeChoice:
+    def __init__(self, content):
+        self.message = FakeMessage(content)
 
 
 class FakeResponse:
-    def __init__(self, payload, stop_reason="end_turn"):
-        self.stop_reason = stop_reason
-        self.content = [FakeBlock(json.dumps(payload) if isinstance(payload, dict) else payload)]
+    def __init__(self, payload):
+        text = json.dumps(payload) if isinstance(payload, (dict, list)) else payload
+        self.choices = [FakeChoice(text)]
 
 
 @pytest.fixture
-def fake_anthropic(monkeypatch):
-    """Installs a stub `anthropic` module and returns a dict to configure it."""
-    state = {"response": None, "raise": None, "calls": []}
+def fake_openai(monkeypatch):
+    """Installs a stub `openai` module and returns a dict to configure it."""
+    state = {"response": None, "raise": None, "calls": [], "init": []}
 
-    class FakeMessages:
+    class FakeCompletions:
         def create(self, **kwargs):
             state["calls"].append(kwargs)
             if state["raise"]:
@@ -42,13 +46,13 @@ def fake_anthropic(monkeypatch):
             return state["response"]
 
     class FakeClient:
-        def __init__(self, api_key=None):
-            self.api_key = api_key
-            self.messages = FakeMessages()
+        def __init__(self, api_key=None, base_url=None):
+            state["init"].append({"api_key": api_key, "base_url": base_url})
+            self.chat = types.SimpleNamespace(completions=FakeCompletions())
 
-    module = types.ModuleType("anthropic")
-    module.Anthropic = FakeClient
-    monkeypatch.setitem(sys.modules, "anthropic", module)
+    module = types.ModuleType("openai")
+    module.OpenAI = FakeClient
+    monkeypatch.setitem(sys.modules, "openai", module)
     return state
 
 
@@ -65,13 +69,15 @@ GOOD_PAYLOAD = {
     "ambiguities": [],
 }
 
+MODEL = "meta/llama-3.2-90b-vision-instruct"
+
 
 # --- happy path ------------------------------------------------------------
 
 
-def test_parses_a_well_formed_response(fake_anthropic):
-    fake_anthropic["response"] = FakeResponse(GOOD_PAYLOAD)
-    result = extraction.extract([("image/jpeg", b"fake")], "key", "claude-opus-5")
+def test_parses_a_well_formed_response(fake_openai):
+    fake_openai["response"] = FakeResponse(GOOD_PAYLOAD)
+    result = extraction.extract([("image/jpeg", b"fake")], "nvapi-x", MODEL)
 
     assert result.error == ""
     assert result.data["provider"] == "CVS Pharmacy"
@@ -80,54 +86,111 @@ def test_parses_a_well_formed_response(fake_anthropic):
     assert result.ambiguities == []
 
 
-def test_request_carries_the_schema_and_the_image(fake_anthropic):
-    fake_anthropic["response"] = FakeResponse(GOOD_PAYLOAD)
-    extraction.extract([("image/jpeg", b"fake")], "key", "claude-opus-5")
-
-    call = fake_anthropic["calls"][0]
-    assert call["model"] == "claude-opus-5"
-    assert call["output_config"]["format"]["schema"] is extraction.EXTRACTION_SCHEMA
-    blocks = call["messages"][0]["content"]
-    assert blocks[0]["type"] == "image"
-    assert blocks[0]["source"]["media_type"] == "image/jpeg"
+def test_client_targets_the_nvidia_endpoint(fake_openai):
+    fake_openai["response"] = FakeResponse(GOOD_PAYLOAD)
+    extraction.extract([("image/jpeg", b"fake")], "nvapi-x", MODEL)
+    assert fake_openai["init"][0]["base_url"] == extraction.DEFAULT_BASE_URL
+    assert fake_openai["init"][0]["api_key"] == "nvapi-x"
 
 
-def test_pdf_pages_are_sent_as_document_blocks(fake_anthropic):
-    fake_anthropic["response"] = FakeResponse(GOOD_PAYLOAD)
-    extraction.extract([("application/pdf", b"%PDF-1.4")], "key", "claude-opus-5")
-    assert fake_anthropic["calls"][0]["messages"][0]["content"][0]["type"] == "document"
+def test_custom_base_url_is_honoured(fake_openai):
+    fake_openai["response"] = FakeResponse(GOOD_PAYLOAD)
+    extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL, "https://self.hosted/v1")
+    assert fake_openai["init"][0]["base_url"] == "https://self.hosted/v1"
 
 
-def test_multiple_pages_are_sent_as_one_receipt(fake_anthropic):
-    fake_anthropic["response"] = FakeResponse(GOOD_PAYLOAD)
-    extraction.extract(
-        [("image/jpeg", b"page1"), ("image/jpeg", b"page2")], "key", "claude-opus-5"
+def test_request_sends_the_image_as_a_data_uri(fake_openai):
+    fake_openai["response"] = FakeResponse(GOOD_PAYLOAD)
+    extraction.extract([("image/jpeg", b"fake")], "nvapi-x", MODEL)
+
+    call = fake_openai["calls"][0]
+    assert call["model"] == MODEL
+    assert call["temperature"] == 0.0
+    blocks = call["messages"][1]["content"]
+    assert blocks[0]["type"] == "image_url"
+    assert blocks[0]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+
+def test_multiple_pages_are_sent_as_one_receipt(fake_openai):
+    fake_openai["response"] = FakeResponse(GOOD_PAYLOAD)
+    extraction.extract([("image/jpeg", b"p1"), ("image/jpeg", b"p2")], "nvapi-x", MODEL)
+    blocks = fake_openai["calls"][0]["messages"][1]["content"]
+    assert sum(1 for b in blocks if b["type"] == "image_url") == 2
+    assert len(fake_openai["calls"]) == 1
+
+
+# --- tolerant parsing (NIM models are looser than a schema-enforced API) ----
+
+
+def test_json_wrapped_in_markdown_fences_is_parsed(fake_openai):
+    fake_openai["response"] = FakeResponse(f"```json\n{json.dumps(GOOD_PAYLOAD)}\n```")
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
+    assert result.data["provider"] == "CVS Pharmacy"
+
+
+def test_json_with_a_chatty_preamble_is_parsed(fake_openai):
+    fake_openai["response"] = FakeResponse(
+        "Sure! Here is the receipt data:\n" + json.dumps(GOOD_PAYLOAD) + "\nHope that helps."
     )
-    blocks = fake_anthropic["calls"][0]["messages"][0]["content"]
-    assert sum(1 for b in blocks if b["type"] == "image") == 2
-    assert len(fake_anthropic["calls"]) == 1
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
+    assert result.data["total_amount"] == "42.18"
+
+
+def test_currency_symbols_are_stripped_from_the_amount(fake_openai):
+    fake_openai["response"] = FakeResponse(dict(GOOD_PAYLOAD, total_amount="$1,042.18"))
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
+    assert result.data["total_amount"] == "1042.18"
+
+
+def test_an_invented_category_is_discarded(fake_openai):
+    fake_openai["response"] = FakeResponse(dict(GOOD_PAYLOAD, category="Pharmacy Stuff"))
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
+    assert result.data["category"] is None
+    assert "category" in result.uncertain_fields
+
+
+def test_an_invented_confidence_is_discarded(fake_openai):
+    fake_openai["response"] = FakeResponse(dict(GOOD_PAYLOAD, eligibility_confidence="very sure"))
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
+    assert result.data["eligibility_confidence"] is None
+
+
+def test_wrong_typed_collections_are_coerced(fake_openai):
+    fake_openai["response"] = FakeResponse(
+        dict(GOOD_PAYLOAD, line_items="none visible", ambiguities=None)
+    )
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
+    assert result.data["line_items"] == []
+    assert result.data["ambiguities"] == []
+
+
+def test_blank_strings_count_as_unread(fake_openai):
+    fake_openai["response"] = FakeResponse(dict(GOOD_PAYLOAD, provider="   "))
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
+    assert result.data["provider"] is None
+    assert "provider" in result.uncertain_fields
 
 
 # --- nulls and ambiguity ---------------------------------------------------
 
 
-def test_nulls_are_reported_as_uncertain_fields(fake_anthropic):
-    payload = dict(GOOD_PAYLOAD, provider=None, total_amount=None)
-    fake_anthropic["response"] = FakeResponse(payload)
-    result = extraction.extract([("image/jpeg", b"x")], "key", "claude-opus-5")
+def test_nulls_are_reported_as_uncertain_fields(fake_openai):
+    fake_openai["response"] = FakeResponse(dict(GOOD_PAYLOAD, provider=None, total_amount=None))
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
     assert result.uncertain_fields == {"provider", "total_amount"}
 
 
-def test_ambiguities_are_surfaced(fake_anthropic):
-    payload = dict(GOOD_PAYLOAD, ambiguities=["Two totals printed; used the patient-due one"])
-    fake_anthropic["response"] = FakeResponse(payload)
-    result = extraction.extract([("image/jpeg", b"x")], "key", "claude-opus-5")
+def test_ambiguities_are_surfaced(fake_openai):
+    fake_openai["response"] = FakeResponse(
+        dict(GOOD_PAYLOAD, ambiguities=["Two totals printed; used the patient-due one"])
+    )
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
     assert len(result.ambiguities) == 1
 
 
-def test_non_medical_flag_is_preserved(fake_anthropic):
-    fake_anthropic["response"] = FakeResponse(dict(GOOD_PAYLOAD, is_medical_expense=False))
-    result = extraction.extract([("image/jpeg", b"x")], "key", "claude-opus-5")
+def test_non_medical_flag_is_preserved(fake_openai):
+    fake_openai["response"] = FakeResponse(dict(GOOD_PAYLOAD, is_medical_expense=False))
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
     assert result.data["is_medical_expense"] is False
 
 
@@ -135,33 +198,45 @@ def test_non_medical_flag_is_preserved(fake_anthropic):
 
 
 def test_missing_api_key_degrades_instead_of_raising():
-    result = extraction.extract([("image/jpeg", b"x")], "", "claude-opus-5")
+    result = extraction.extract([("image/jpeg", b"x")], "", MODEL)
     assert result.data == {}
-    assert "ANTHROPIC_API_KEY" in result.error
+    assert "NVIDIA_API_KEY" in result.error
     assert result.ambiguities  # the reason is surfaced to the UI
 
 
-def test_api_failure_degrades_instead_of_raising(monkeypatch, fake_anthropic):
+def test_unrasterizable_pdf_degrades_instead_of_raising():
+    result = extraction.extract([], "nvapi-x", MODEL)
+    assert result.data == {}
+    assert "image" in result.error
+
+
+def test_api_failure_degrades_instead_of_raising(monkeypatch, fake_openai):
     monkeypatch.setattr(
         extraction, "_call", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("503 overloaded"))
     )
-    result = extraction.extract([("image/jpeg", b"x")], "key", "claude-opus-5")
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
     assert result.data == {}
     assert "503 overloaded" in result.error
 
 
-def test_malformed_json_degrades_instead_of_raising(fake_anthropic):
-    fake_anthropic["response"] = FakeResponse("{not valid json")
-    result = extraction.extract([("image/jpeg", b"x")], "key", "claude-opus-5")
+def test_unparseable_reply_degrades_instead_of_raising(fake_openai):
+    fake_openai["response"] = FakeResponse("I'm sorry, I can't read that receipt.")
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
     assert result.data == {}
-    assert "JSONDecodeError" in result.error
+    assert "no JSON object" in result.error
 
 
-def test_refusal_is_reported_not_raised(fake_anthropic):
-    fake_anthropic["response"] = FakeResponse(GOOD_PAYLOAD, stop_reason="refusal")
-    result = extraction.extract([("image/jpeg", b"x")], "key", "claude-opus-5")
+def test_empty_reply_degrades_instead_of_raising(fake_openai):
+    fake_openai["response"] = FakeResponse("")
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
     assert result.data == {}
-    assert "declined" in result.error
+    assert "empty" in result.error
+
+
+def test_a_json_array_is_rejected_not_returned(fake_openai):
+    fake_openai["response"] = FakeResponse([1, 2, 3])
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
+    assert result.data == {}
 
 
 # --- normalization ---------------------------------------------------------
