@@ -80,7 +80,7 @@ def main() -> int:
         print("Not configured — missing: " + ", ".join(missing))
         return 1
 
-    client = SheetsClient(settings.sheet_id, config.build_credentials(settings.service_account_json))
+    client = SheetsClient(settings.sheet_id, config.build_credentials(settings.google_credentials_json))
     client.ensure_tabs()
 
     if args.purge:

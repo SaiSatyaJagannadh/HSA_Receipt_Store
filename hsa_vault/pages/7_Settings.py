@@ -19,8 +19,10 @@ st.caption(
 
 with st.form("settings"):
     st.subheader("Google")
-    service_account_json = st.text_input(
-        "Service account JSON path", value=settings.service_account_json
+    google_credentials_json = st.text_input(
+        "Google credentials JSON path",
+        value=settings.google_credentials_json,
+        help="OAuth client file (recommended) or a service account key.",
     )
     c1, c2 = st.columns(2)
     drive_folder_id = c1.text_input("Drive folder ID", value=settings.drive_folder_id)
@@ -64,7 +66,7 @@ with st.form("settings"):
         config.save_settings(
             replace(
                 settings,
-                service_account_json=service_account_json.strip(),
+                google_credentials_json=google_credentials_json.strip(),
                 drive_folder_id=drive_folder_id.strip(),
                 sheet_id=sheet_id.strip(),
                 nvidia_api_key=nvidia_api_key.strip(),

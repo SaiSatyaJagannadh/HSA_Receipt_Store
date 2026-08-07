@@ -139,6 +139,14 @@ def parse_datetime(value) -> datetime | None:
         return datetime(day.year, day.month, day.day) if day else None
 
 
+def safe_url(value) -> str:
+    """Only http(s) survives. drive_link is rendered as a clickable link but the
+    Sheet is hand-editable, so a `javascript:` URL pasted into that column would
+    otherwise become a one-click script in my own browser."""
+    text = str(value or "").strip()
+    return text if text.lower().startswith(("http://", "https://")) else ""
+
+
 def parse_bool(value) -> bool:
     if isinstance(value, bool):
         return value
@@ -275,7 +283,7 @@ class Receipt:
             receipt_id=row.get("receipt_id", "") or str(uuid.uuid4()),
             file_hash=row.get("file_hash", ""),
             drive_file_id=row.get("drive_file_id", ""),
-            drive_link=row.get("drive_link", ""),
+            drive_link=safe_url(row.get("drive_link")),
             service_date=parse_date(row.get("service_date")),
             upload_date=parse_datetime(row.get("upload_date")),
             provider=row.get("provider", ""),

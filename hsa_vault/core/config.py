@@ -29,8 +29,8 @@ set_audit_path(AUDIT_PATH)
 def resolve_path(value: str) -> Path:
     """A relative key path is resolved against the CWD first, then the repo root.
 
-    The app is launched from hsa_vault/ but the key lives next to the README, so
-    a bare './service_account.json' has to work from either directory.
+    The app is launched from hsa_vault/ but the credentials file lives next to
+    the README, so a bare './credentials.json' has to work from either.
     """
     path = Path(value).expanduser()
     if path.is_absolute() or path.exists():
@@ -40,7 +40,7 @@ def resolve_path(value: str) -> Path:
 
 @dataclass
 class Settings:
-    service_account_json: str = ""
+    google_credentials_json: str = ""
     drive_folder_id: str = ""
     sheet_id: str = ""
     nvidia_api_key: str = ""
@@ -62,8 +62,8 @@ class Settings:
     def ready(self) -> list[str]:
         """Returns the list of missing things that block Google access."""
         missing = []
-        if not self.service_account_json or not resolve_path(self.service_account_json).exists():
-            missing.append("service account JSON path")
+        if not self.google_credentials_json or not resolve_path(self.google_credentials_json).exists():
+            missing.append("Google credentials JSON path")
         if not self.drive_folder_id:
             missing.append("Drive folder ID")
         if not self.sheet_id:
@@ -72,7 +72,7 @@ class Settings:
 
 
 _ENV_MAP = {
-    "service_account_json": "GOOGLE_SERVICE_ACCOUNT_JSON",
+    "google_credentials_json": "GOOGLE_CREDENTIALS_JSON",
     "drive_folder_id": "HSA_DRIVE_FOLDER_ID",
     "sheet_id": "HSA_SHEET_ID",
     "nvidia_api_key": "NVIDIA_API_KEY",
@@ -116,15 +116,83 @@ def save_settings(settings: Settings) -> None:
 
 
 SCOPES = [
+    # Full drive scope, not drive.file: Bulk Import has to read receipts that
+    # already exist in your Drive, which drive.file cannot see.
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/spreadsheets",
 ]
 
+TOKEN_PATH = STATE_DIR / "token.json"
 
-def build_credentials(service_account_json: str):
-    """Service account auth — no OAuth consent screen, no refresh tokens to babysit."""
-    from google.oauth2 import service_account
 
-    return service_account.Credentials.from_service_account_file(
-        str(resolve_path(service_account_json)), scopes=SCOPES
-    )
+def credential_kind(path: Path) -> str:
+    """'service_account' | 'oauth' — decided by the file's own contents."""
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return "unknown"
+    if data.get("type") == "service_account":
+        return "service_account"
+    if "installed" in data or "web" in data:
+        return "oauth"
+    return "unknown"
+
+
+def build_credentials(credentials_json: str):
+    """Google auth from whichever credential file you point at.
+
+    OAuth is the default because a service account has no Drive storage of its
+    own: on a personal (non-Workspace) account every file it creates fails with
+    403 storageQuotaExceeded. Under OAuth the files are owned by you, which is
+    also what the whole design wants — your records must outlive this app and
+    the Cloud project it was built in.
+
+    A service account file still works, for Workspace accounts writing to a
+    Shared Drive.
+    """
+    path = resolve_path(credentials_json)
+    kind = credential_kind(path)
+
+    if kind == "service_account":
+        from google.oauth2 import service_account
+
+        return service_account.Credentials.from_service_account_file(
+            str(path), scopes=SCOPES
+        )
+
+    if kind != "oauth":
+        raise ValueError(
+            f"{path} is not a Google credentials file. Expected either an OAuth "
+            "client (downloaded from Credentials → OAuth client IDs) or a "
+            "service account key."
+        )
+
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib.flow import InstalledAppFlow
+
+    creds = None
+    if TOKEN_PATH.exists():
+        try:
+            creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
+        except Exception:
+            creds = None  # corrupt or scope-mismatched token: re-consent below
+
+    if creds and creds.valid:
+        return creds
+
+    if creds and creds.expired and creds.refresh_token:
+        try:
+            creds.refresh(Request())
+            TOKEN_PATH.write_text(creds.to_json())
+            return creds
+        except Exception:
+            creds = None  # revoked or expired past refresh: re-consent below
+
+    # Opens a browser once and blocks on your consent. Run a terminal command
+    # (scripts/bootstrap_sheet.py) for this rather than doing it inside Streamlit.
+    flow = InstalledAppFlow.from_client_secrets_file(str(path), SCOPES)
+    creds = flow.run_local_server(port=0)
+    TOKEN_PATH.write_text(creds.to_json())
+    TOKEN_PATH.chmod(0o600)
+    return creds

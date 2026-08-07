@@ -176,3 +176,16 @@ def test_from_row_tolerates_a_hand_edited_upload_date():
     assert parse_datetime("03/15/2026") == datetime(2026, 3, 15)
     assert parse_datetime("who knows") is None
     assert Receipt.from_row({"file_hash": "h", "upload_date": "garbage"}).upload_date is None
+
+
+def test_drive_link_only_accepts_http_urls():
+    """The Sheet is hand-editable and drive_link renders as a clickable link."""
+    from core.models import safe_url
+
+    assert safe_url("https://drive.google.com/file/d/abc") == "https://drive.google.com/file/d/abc"
+    assert safe_url("javascript:alert(document.cookie)") == ""
+    assert safe_url("JaVaScRiPt:alert(1)") == ""
+    assert safe_url("data:text/html;base64,PHNjcmlwdD4=") == ""
+    assert safe_url("file:///etc/passwd") == ""
+    assert safe_url(None) == ""
+    assert Receipt.from_row({"file_hash": "h", "drive_link": "javascript:alert(1)"}).drive_link == ""

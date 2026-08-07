@@ -41,11 +41,11 @@ def main() -> int:
     args = parser.parse_args()
 
     settings = config.load_settings()
-    if not settings.service_account_json:
-        print("GOOGLE_SERVICE_ACCOUNT_JSON is not set. Copy .env.example to .env first.")
+    if not settings.google_credentials_json:
+        print("GOOGLE_CREDENTIALS_JSON is not set. Copy .env.example to .env first.")
         return 1
 
-    credentials = config.build_credentials(settings.service_account_json)
+    credentials = config.build_credentials(settings.google_credentials_json)
 
     sheet_id = settings.sheet_id
     if args.create or not sheet_id:

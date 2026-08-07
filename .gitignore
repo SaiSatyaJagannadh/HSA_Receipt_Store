@@ -436,3 +436,7 @@ service_account.json
 
 __pycache__/
 .pytest_cache/
+
+credentials.json
+client_secret*.json
+token.json

@@ -28,8 +28,8 @@ def reload_settings() -> config.Settings:
 
 
 @st.cache_resource(show_spinner=False)
-def _clients(service_account_json: str, sheet_id: str, folder_id: str):
-    creds = config.build_credentials(service_account_json)
+def _clients(credentials_json: str, sheet_id: str, folder_id: str):
+    creds = config.build_credentials(credentials_json)
     return SheetsClient(sheet_id, creds), DriveClient(folder_id, creds)
 
 
@@ -38,7 +38,7 @@ def clients() -> tuple[SheetsClient, DriveClient]:
     missing = s.ready()
     if missing:
         raise RuntimeError("Not configured yet — missing: " + ", ".join(missing))
-    return _clients(s.service_account_json, s.sheet_id, s.drive_folder_id)
+    return _clients(s.google_credentials_json, s.sheet_id, s.drive_folder_id)
 
 
 def connected() -> bool:
