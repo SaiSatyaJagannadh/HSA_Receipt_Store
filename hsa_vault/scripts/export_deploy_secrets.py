@@ -76,7 +76,15 @@ def build() -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--write", action="store_true", help="write .streamlit/secrets.toml")
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help=(
+            "write .streamlit/secrets.toml. Note: this makes the LOCAL app think "
+            "it is deployed, so the login gate engages and refuses to start "
+            "without an [auth] block. Prefer piping stdout to your clipboard."
+        ),
+    )
     args = parser.parse_args()
 
     block = build()
@@ -86,6 +94,11 @@ def main() -> int:
         out.write_text(block)
         out.chmod(0o600)
         print(f"Wrote {out.resolve()} (gitignored, mode 600).", file=sys.stderr)
+        print(
+            "Delete it before running locally, or the fail-closed login gate "
+            "will block the local app.",
+            file=sys.stderr,
+        )
     else:
         print(block)
     return 0
