@@ -305,11 +305,25 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-95 tests, no network. `test_ledger.py` covers the balance math: HSA-card
-exclusion, partial reimbursements, multi-receipt withdrawals, tax-year
-boundaries, and duplicate rejection. `test_extraction_parsing.py` mocks the
-OpenAI SDK entirely and covers the tolerant reply parsing — fenced JSON, chatty
-preambles, invented categories, and currency symbols in the amount.
+144 tests, no network.
+
+- `test_ledger.py` — the balance math: HSA-card exclusion, partial
+  reimbursements, multi-receipt withdrawals, tax-year boundaries, duplicate
+  rejection, and the amount-filter bounds.
+- `test_extraction_parsing.py` — mocks the OpenAI SDK entirely; covers tolerant
+  reply parsing (fenced JSON, chatty preambles, invented categories, currency
+  symbols in the amount).
+- `test_pdf_export.py` — reportlab markup injection and packet contents.
+- `test_auth.py` — the fail-closed login gate, plus the Authlib dependency that
+  st.login() requires.
+- `test_pages.py` — renders all 8 pages through Streamlit's AppTest in four data
+  states: empty vault, one receipt, several identical amounts, and a mixed set.
+
+That last file exists because two bugs reached production while every unit test
+passed — a slider that collapsed on a single-receipt vault, and a session_state
+key that collided with a form key. Both were invisible until something actually
+rendered a page, and both were hidden further by fixtures that patched the very
+function under test. Patch the *loader*, not the accessor.
 
 ---
 
