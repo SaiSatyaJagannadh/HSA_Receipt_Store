@@ -13,6 +13,7 @@ st.set_page_config(page_title="Contributions — HSAVault", page_icon="🏦", la
 
 auth.require_login()
 st.title("🏦 Contributions")
+store.show_flash()
 
 if store.settings().ready():
     st.warning("Connect Google first — see **Settings**.")
@@ -59,7 +60,7 @@ if submitted:
         st.error("Enter a positive amount.")
     else:
         store.save_contribution(Contribution(date=when, amount=amount, source=source))
-        st.success(f"Logged ${amount:,.2f} for {when.year}.")
+        store.flash(f"Logged ${amount:,.2f} for {when.year}.")
         st.rerun()
 
 st.divider()

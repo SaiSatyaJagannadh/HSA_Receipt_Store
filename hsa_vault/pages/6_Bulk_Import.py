@@ -24,6 +24,7 @@ st.set_page_config(page_title="Bulk Import — HSAVault", page_icon="📥", layo
 
 auth.require_login()
 st.title("📥 Bulk import")
+store.show_flash()
 
 if store.settings().ready():
     st.warning("Connect Google first — see **Settings**.")
@@ -211,7 +212,7 @@ if queue:
                         st.error(f"Failed: {exc}")
                     else:
                         st.session_state.setdefault("imported_ids", set()).add(meta["id"])
-                        st.success("Indexed.")
+                        store.flash("Indexed.")
                         st.rerun()
 
     if st.button("Clear the queue"):

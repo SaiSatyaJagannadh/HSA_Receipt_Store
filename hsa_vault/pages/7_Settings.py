@@ -11,6 +11,7 @@ st.set_page_config(page_title="Settings — HSAVault", page_icon="⚙️", layou
 
 auth.require_login()
 st.title("⚙️ Settings")
+store.show_flash()
 
 settings = store.settings()
 
@@ -82,7 +83,7 @@ with st.form("settings"):
         )
         st.cache_resource.clear()
         store.reload_settings()
-        st.success("Saved.")
+        store.flash("Saved.")
         st.rerun()
 
 st.divider()

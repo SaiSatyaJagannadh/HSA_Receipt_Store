@@ -21,6 +21,7 @@ st.set_page_config(page_title="Upload — HSAVault", page_icon="⬆️", layout=
 
 auth.require_login()
 st.title("⬆️ Upload receipts")
+store.show_flash()
 
 if store.settings().ready():
     st.warning("Connect Google first — see **Settings**.")
@@ -146,7 +147,7 @@ def confirmation_form(key: str, upload, data: dict, uncertain: set[str], raw: st
                 "did not, the file will be flagged as an orphan on next launch."
             )
             return
-    st.success(f"Saved — {receipt.provider or 'receipt'} filed under {receipt.tax_year}.")
+    store.flash(f"Saved — {receipt.provider or 'receipt'} filed under {receipt.tax_year}.")
     st.session_state.setdefault("saved_hashes", set()).add(key)
     st.rerun()
 

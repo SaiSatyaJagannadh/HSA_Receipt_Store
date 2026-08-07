@@ -19,6 +19,7 @@ st.set_page_config(page_title="Receipts — HSAVault", page_icon="📂", layout=
 
 auth.require_login()
 st.title("📂 Receipts")
+store.show_flash()
 
 if store.settings().ready():
     st.warning("Connect Google first — see **Settings**.")
@@ -210,11 +211,14 @@ with edit_col:
         if errors:
             st.error("; ".join(errors))
         elif not changes:
-            st.info("Nothing changed.")
+            st.info(
+                "No edits to save — every field still matches what is stored. "
+                "(If you just saved, that worked; this is the already-saved state.)"
+            )
         else:
             receipt.record_edit(changes, note="manual edit")
             store.save_receipt(receipt)
-            st.success(f"Updated {len(changes)} field(s).")
+            store.flash(f"Updated {len(changes)} field(s): {', '.join(sorted(changes))}.")
             st.rerun()
 
 history = receipt.history()
@@ -243,7 +247,7 @@ if not receipt.deleted:
         )
         if st.button("Archive receipt", disabled=confirm != "ARCHIVE"):
             store.archive_receipt(receipt, reason)
-            st.success("Archived.")
+            store.flash("Archived.")
             st.rerun()
 else:
     st.info("This receipt is archived. Its file is in `HSA_Vault/_archive/`.")

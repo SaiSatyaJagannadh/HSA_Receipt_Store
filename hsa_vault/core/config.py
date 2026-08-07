@@ -154,12 +154,21 @@ def credential_kind(path: Path) -> str:
     return "unknown"
 
 
-def _secrets() -> dict:
-    """st.secrets if we're inside a Streamlit run, else {}. Never raises."""
+def _secrets():
+    """st.secrets if we're inside a Streamlit run with secrets, else {}.
+
+    st.secrets is lazy: constructing it never raises, but the first key lookup
+    parses secrets.toml and raises StreamlitSecretNotFoundError when there is
+    none. Returning it bare moved that raise to the caller's `in` check, outside
+    this try — which crashed every local run that had no secrets.toml. Probe it
+    here so the failure is caught where it is handled.
+    """
     try:
         import streamlit as st
 
-        return st.secrets
+        secrets = st.secrets
+        "google_token" in secrets  # forces the lazy parse inside the try
+        return secrets
     except Exception:
         return {}
 

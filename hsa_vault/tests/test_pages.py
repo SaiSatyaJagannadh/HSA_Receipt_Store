@@ -138,3 +138,21 @@ def test_page_renders_without_exception(page, state, wired):
         f"{page} raised in the '{state}' state: "
         + " | ".join(str(e.value) for e in at.exception)
     )
+
+
+def test_ready_survives_a_missing_secrets_file(monkeypatch):
+    """Settings.ready() must not raise when there is no secrets.toml.
+
+    st.secrets is lazy: it raises on first key access, not on construction. When
+    config._secrets() returned it unprobed, the raise landed on the caller's
+    `in` test — crashing every page of a local run that had no secrets file.
+    """
+    import streamlit as st
+
+    class Exploding:
+        def __contains__(self, key):
+            raise st.errors.StreamlitSecretNotFoundError("no secrets found")
+
+    monkeypatch.setattr(st, "secrets", Exploding())
+    settings = config.Settings(drive_folder_id="f", sheet_id="s")
+    assert settings.ready() == ["Google credentials JSON path"]

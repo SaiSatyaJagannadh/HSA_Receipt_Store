@@ -57,6 +57,25 @@ def clear() -> None:
         st.session_state.pop(key, None)
 
 
+_FLASH = "_hsa_flash"
+
+
+def flash(message: str) -> None:
+    """Queue a confirmation to render *after* the next st.rerun().
+
+    st.success() called immediately before st.rerun() never reaches the browser:
+    the rerun discards the page mid-render. Every save therefore looked like a
+    no-op, and pressing Save a second time then reported "Nothing changed",
+    which read as the edit being rejected.
+    """
+    st.session_state[_FLASH] = message
+
+
+def show_flash() -> None:
+    if message := st.session_state.pop(_FLASH, None):
+        st.success(message)
+
+
 # --- reads -----------------------------------------------------------------
 
 
