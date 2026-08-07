@@ -10,6 +10,21 @@ import types
 
 import pytest
 
+import core
+
+
+def _forget_auth_module() -> None:
+    """Drop core.auth from BOTH caches.
+
+    `from core import auth` resolves the attribute on the already-imported `core`
+    package before consulting sys.modules, so popping sys.modules alone leaves
+    the stale module (bound to this file's fake streamlit) reachable, and every
+    later test that renders a page inherits it.
+    """
+    sys.modules.pop("core.auth", None)
+    if hasattr(core, "auth"):
+        delattr(core, "auth")
+
 
 class Stop(Exception):
     """Stand-in for st.stop(), which halts the script run."""
@@ -46,9 +61,12 @@ def st(monkeypatch):
 
     mod.sidebar = _Sidebar()
     monkeypatch.setitem(sys.modules, "streamlit", mod)
-    sys.modules.pop("core.auth", None)
+    # core.auth binds `st` at import time, so re-import it against the fake —
+    # and forget it again on teardown so real pages get the real streamlit.
+    _forget_auth_module()
     mod._calls = calls
-    return mod
+    yield mod
+    _forget_auth_module()
 
 
 def load(st):
