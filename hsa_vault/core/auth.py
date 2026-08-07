@@ -14,6 +14,15 @@ bound to loopback, so the gate stays out of the way.
 
 import streamlit as st
 
+# Must match the [auth.<PROVIDER>] section name in secrets.toml.
+# st.login() with no argument looks for credentials directly under [auth]
+# instead, and errors with "missing for the default authentication provider".
+PROVIDER = "google"
+
+
+def _login() -> None:
+    st.login(PROVIDER)
+
 
 def _secrets_has(key: str) -> bool:
     try:
@@ -55,10 +64,24 @@ def require_login() -> None:
         )
         st.stop()
 
+    try:
+        provider_ok = PROVIDER in st.secrets["auth"]
+    except Exception:
+        provider_ok = False
+    if not provider_ok:
+        st.error(
+            f"**Refusing to start.** Secrets have an `[auth]` section but no "
+            f"`[auth.{PROVIDER}]`. Streamlit resolves the provider by name, so "
+            f"the client_id/client_secret/server_metadata_url must live under "
+            f"`[auth.{PROVIDER}]`. Regenerate with "
+            f"`scripts/export_deploy_secrets.py --web-client ...`."
+        )
+        st.stop()
+
     if not st.user.is_logged_in:
         st.title("🧾 HSAVault")
         st.caption("Your HSA receipt vault. Sign in to continue.")
-        st.button("Sign in with Google", type="primary", on_click=st.login)
+        st.button("Sign in with Google", type="primary", on_click=_login)
         st.stop()
 
     allowed = allowed_emails()
