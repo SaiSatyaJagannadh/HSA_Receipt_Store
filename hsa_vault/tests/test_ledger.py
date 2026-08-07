@@ -290,3 +290,37 @@ def test_stale_hsa_card_receipts_are_not_flagged_as_unreimbursed():
         eligibility_confidence="certain",
     )
     assert ledger.warnings([old_card], today) == []
+
+
+# --- amount filter bounds --------------------------------------------------
+
+
+def test_amount_bounds_never_collapse_to_a_zero_width_range():
+    """Streamlit's slider raises StreamlitAPIException when min == max. A vault
+    holding exactly one receipt is the state every new user starts in, and it
+    broke the Receipts page in production."""
+    low, high = ledger.amount_bounds([receipt(amount=Decimal("25.46"))])
+    assert low < high
+    assert low == 25.46
+
+
+def test_amount_bounds_with_several_identical_amounts():
+    receipts = [receipt(amount=Decimal("10.00")) for _ in range(3)]
+    low, high = ledger.amount_bounds(receipts)
+    assert low < high
+
+
+def test_amount_bounds_spans_the_real_range_when_there_is_one():
+    receipts = [receipt(amount=Decimal("5.00")), receipt(amount=Decimal("500.00"))]
+    assert ledger.amount_bounds(receipts) == (5.0, 500.0)
+
+
+def test_amount_bounds_with_no_receipts_at_all():
+    low, high = ledger.amount_bounds([])
+    assert low < high
+
+
+def test_amount_bounds_ignores_receipts_with_no_amount():
+    receipts = [receipt(amount=None), receipt(amount=Decimal("42.00"))]
+    low, high = ledger.amount_bounds(receipts)
+    assert low == 42.0 and high > low

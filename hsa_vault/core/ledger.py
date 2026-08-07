@@ -157,3 +157,19 @@ def money_or_zero(value) -> Decimal:
     if value is None:
         return ZERO
     return Decimal(str(value)).quantize(Decimal("0.01"))
+
+
+def amount_bounds(receipts: list[Receipt]) -> tuple[float, float]:
+    """(low, high) for the amount-range filter, guaranteed low < high.
+
+    Streamlit's slider rejects min_value == max_value, which happens with a
+    single receipt or several of the same amount — a real state, not an edge
+    case, and the one every brand-new vault starts in.
+    """
+    amounts = [float(r.amount) for r in receipts if r.amount is not None]
+    if not amounts:
+        return 0.0, 1.0
+    low, high = min(amounts), max(amounts)
+    if high <= low:
+        high = low + 1.0
+    return low, high

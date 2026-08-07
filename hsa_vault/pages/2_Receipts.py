@@ -37,7 +37,7 @@ if not pool:
 years = sorted({r.tax_year for r in pool if r.tax_year}, reverse=True)
 providers = sorted({r.provider for r in pool if r.provider})
 patients = sorted({r.patient for r in pool if r.patient})
-amounts = [float(r.amount) for r in pool if r.amount is not None] or [0.0]
+amount_low, amount_high = ledger.amount_bounds(pool)
 
 with st.sidebar:
     st.header("Filters")
@@ -51,9 +51,9 @@ with st.sidebar:
     f_reimbursed = st.selectbox("Reimbursed", ["Any", "Yes", "No", "Partial"])
     lo, hi = st.slider(
         "Amount range",
-        min_value=float(min(amounts)),
-        max_value=float(max(max(amounts), 1.0)),
-        value=(float(min(amounts)), float(max(max(amounts), 1.0))),
+        min_value=amount_low,
+        max_value=amount_high,
+        value=(amount_low, amount_high),
     )
     query = st.text_input("Search provider + description").strip().lower()
 
