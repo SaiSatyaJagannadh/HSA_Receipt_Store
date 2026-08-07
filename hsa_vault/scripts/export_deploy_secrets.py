@@ -13,6 +13,7 @@ that .streamlit/secrets.toml is gitignored for exactly this reason.
 
 import argparse
 import json
+import secrets as pysecrets
 import sys
 from pathlib import Path
 
@@ -23,7 +24,7 @@ def toml_escape(value: str) -> str:
     return str(value).replace("\\", "\\\\").replace('"', '\\"')
 
 
-def build() -> str:
+def build(web_client: str | None, allowed_emails: str, app_url: str) -> str:
     if not config.TOKEN_PATH.exists():
         print(
             f"No token at {config.TOKEN_PATH}. Run this first:\n"
@@ -69,8 +70,30 @@ def build() -> str:
         f'irs_limit = "{toml_escape(s.irs_limit)}"',
         f"irs_limit_year = {s.irs_limit_year}",
         f"projection_rate = {s.projection_rate}",
+        f'allowed_emails = "{toml_escape(allowed_emails)}"',
         "",
     ]
+
+    if web_client:
+        data = json.loads(Path(web_client).read_text())
+        block = data.get("web") or data.get("installed") or {}
+        if not block.get("client_id"):
+            print(f"{web_client} has no client_id.", file=sys.stderr)
+            raise SystemExit(1)
+        lines += [
+            "# Streamlit's own login. Without this the app refuses to start,",
+            "# because a public URL plus Drive credentials must never be open.",
+            "[auth]",
+            f'redirect_uri = "{app_url.rstrip("/")}/oauth2callback"',
+            f'cookie_secret = "{pysecrets.token_urlsafe(48)}"',
+            "",
+            "[auth.google]",
+            f'client_id = "{toml_escape(block["client_id"])}"',
+            f'client_secret = "{toml_escape(block.get("client_secret", ""))}"',
+            'server_metadata_url = '
+            '"https://accounts.google.com/.well-known/openid-configuration"',
+            "",
+        ]
     return "\n".join(lines)
 
 
@@ -85,9 +108,16 @@ def main() -> int:
             "without an [auth] block. Prefer piping stdout to your clipboard."
         ),
     )
+    parser.add_argument("--web-client", help="path to the Web OAuth client JSON (adds [auth])")
+    parser.add_argument("--allowed-emails", default="", help="comma-separated addresses allowed in")
+    parser.add_argument("--app-url", default="", help="deployed app URL, e.g. https://x.streamlit.app")
     args = parser.parse_args()
 
-    block = build()
+    if args.web_client and not (args.allowed_emails and args.app_url):
+        print("--web-client requires --allowed-emails and --app-url.", file=sys.stderr)
+        raise SystemExit(1)
+
+    block = build(args.web_client, args.allowed_emails, args.app_url)
     if args.write:
         out = Path(".streamlit/secrets.toml")
         out.parent.mkdir(exist_ok=True)
