@@ -185,13 +185,44 @@ on your records and, through the cached token, on your Google Drive.
 `.streamlit/config.toml` therefore binds the server to `127.0.0.1` — Streamlit's
 own default is `0.0.0.0`, which would publish all of that to your local network.
 
-**Do not deploy this to Streamlit Community Cloud as-is.** Three reasons: the
-OAuth flow used here opens a browser on the machine running the code, which a
-hosted server cannot do; there is no authentication, so the URL alone would grant
-a stranger your medical expense history; and your receipts would transit a third
-party. Hosting it would mean a Web OAuth client with a redirect URI, real
-authentication in front of the app, and secrets in `st.secrets` — a different
-threat model than the one this code was written for.
+### Deploying
+
+Live at **https://hsavault-sai.streamlit.app**. Three layers stand between the
+public internet and your records:
+
+1. **Private repo → private app.** Community Cloud only publishes *public* apps,
+   but an app deployed from a private repo requires Streamlit viewer sign-in.
+2. **In-app Google login** (`core/auth.py`), restricted to `allowed_emails`.
+3. **Fail-closed.** If `google_token` is in secrets but `[auth]` is missing, or
+   `allowed_emails` is empty, the app refuses to start rather than serving an
+   open door. Credentials without a gate is the one state that must never serve
+   traffic — `tests/test_auth.py` covers each refusal path.
+
+To redeploy from scratch:
+
+```sh
+# 1. A Web OAuth client in the same GCP project, redirect URI:
+#    https://<your-subdomain>.streamlit.app/oauth2callback
+
+# 2. Generate the secrets block (never commit it)
+cd hsa_vault
+../.venv/bin/python -m scripts.export_deploy_secrets \
+  --web-client ~/Downloads/client_secret_*.json \
+  --allowed-emails you@gmail.com \
+  --app-url https://<your-subdomain>.streamlit.app
+
+# 3. share.streamlit.io -> Deploy, main file hsa_vault/app.py, Python 3.12,
+#    paste the block into Advanced settings -> Secrets. The subdomain MUST
+#    match the redirect URI exactly or login fails.
+```
+
+The hosted app runs on the refresh token you granted locally — a server has no
+browser for the consent flow. `packages.txt` installs poppler-utils so PDF
+rasterization works there too.
+
+> Do **not** run `export_deploy_secrets --write` and then start the app locally:
+> the written `secrets.toml` makes the local run look deployed, so the
+> fail-closed gate blocks it.
 
 ### Optional system dependency
 
