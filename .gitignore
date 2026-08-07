@@ -427,3 +427,12 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# HSAVault
+service_account.json
+*-service-account*.json
+.venv/
+.hsavault/
+
+__pycache__/
+.pytest_cache/
