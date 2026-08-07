@@ -109,7 +109,10 @@ def wired(monkeypatch):
             nvidia_api_key="",  # extraction off: no network from a test
             default_patient="Tester",
         )
-        monkeypatch.setattr(store, "settings", lambda: settings)
+        # Patch the loader, NOT store.settings(). Patching store.settings meant the
+        # real one never ran, so it never wrote st.session_state — which is exactly
+        # how the settings/form key collision slipped through to production.
+        monkeypatch.setattr(config, "load_settings", lambda: settings)
         monkeypatch.setattr(store, "receipts", lambda refresh=False: receipts)
         monkeypatch.setattr(store, "reimbursements", lambda refresh=False: [
             Reimbursement(date=date(2026, 5, 1), amount=Decimal("50.00"), method="transfer")

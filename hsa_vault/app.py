@@ -43,20 +43,20 @@ st.title("🧾 HSAVault")
 if require_setup():
     receipts = store.receipts()
 
-    if reason := st.session_state.pop("offline_reason", None):
+    if reason := st.session_state.pop("_hsa_offline_reason", None):
         st.error(f"Could not reach Google Sheets — showing the local cache. ({reason})")
 
     # --- orphan repair check, once per session ----------------------------
-    if "orphans_checked" not in st.session_state:
-        st.session_state.orphans_checked = True
+    if "_hsa_orphans_checked" not in st.session_state:
+        st.session_state["_hsa_orphans_checked"] = True
         try:
-            st.session_state.orphans = store.find_orphans()
+            st.session_state["_hsa_orphans"] = store.find_orphans()
         except Exception:
-            st.session_state.orphans = []
-    if st.session_state.get("orphans"):
+            st.session_state["_hsa_orphans"] = []
+    if st.session_state.get("_hsa_orphans"):
         with st.container(border=True):
             st.error(
-                f"⚠️ {len(st.session_state.orphans)} file(s) in Drive have no row in the "
+                f"⚠️ {len(st.session_state["_hsa_orphans"])} file(s) in Drive have no row in the "
                 "index. This happens if a Drive upload succeeded but the Sheets write "
                 "failed. Repair them in **Bulk Import**."
             )

@@ -15,16 +15,23 @@ from .sheets import SheetsClient
 from .util import audit, short_hash, slugify
 
 
+# Namespaced so a cache key can never collide with a widget key. st.form("settings")
+# against a bare st.session_state["settings"] raised
+# StreamlitValueAssignmentNotAllowedError and took out the whole Settings page.
+_SETTINGS = "_hsa_settings"
+_CACHES = ("_hsa_receipts", "_hsa_reimbursements", "_hsa_contributions")
+
+
 def settings() -> config.Settings:
-    if "settings" not in st.session_state:
-        st.session_state.settings = config.load_settings()
-    return st.session_state.settings
+    if _SETTINGS not in st.session_state:
+        st.session_state[_SETTINGS] = config.load_settings()
+    return st.session_state[_SETTINGS]
 
 
 def reload_settings() -> config.Settings:
-    st.session_state.settings = config.load_settings()
+    st.session_state[_SETTINGS] = config.load_settings()
     clear()
-    return st.session_state.settings
+    return st.session_state[_SETTINGS]
 
 
 @st.cache_resource(show_spinner=False)
@@ -46,7 +53,7 @@ def connected() -> bool:
 
 
 def clear() -> None:
-    for key in ("receipts", "reimbursements", "contributions"):
+    for key in _CACHES:
         st.session_state.pop(key, None)
 
 
@@ -56,9 +63,9 @@ def clear() -> None:
 def receipts(refresh: bool = False) -> list[Receipt]:
     """Sheets is authoritative. On failure, fall back to the local cache and say so."""
     if refresh:
-        st.session_state.pop("receipts", None)
-    if "receipts" in st.session_state:
-        return st.session_state.receipts
+        st.session_state.pop("_hsa_receipts", None)
+    if "_hsa_receipts" in st.session_state:
+        return st.session_state["_hsa_receipts"]
     try:
         sheets, _ = clients()
         rows = sheets.read_tab("receipts")
@@ -67,31 +74,31 @@ def receipts(refresh: bool = False) -> list[Receipt]:
     except Exception as exc:  # noqa: BLE001
         audit("store.read_failed", error=str(exc)[:300])
         items = cache.load(config.CACHE_PATH)
-        st.session_state["offline_reason"] = str(exc)
-    st.session_state.receipts = items
+        st.session_state["_hsa_offline_reason"] = str(exc)
+    st.session_state["_hsa_receipts"] = items
     return items
 
 
 def reimbursements(refresh: bool = False) -> list[Reimbursement]:
     if refresh:
-        st.session_state.pop("reimbursements", None)
-    if "reimbursements" not in st.session_state:
+        st.session_state.pop("_hsa_reimbursements", None)
+    if "_hsa_reimbursements" not in st.session_state:
         sheets, _ = clients()
-        st.session_state.reimbursements = [
+        st.session_state["_hsa_reimbursements"] = [
             Reimbursement.from_row(r) for r in sheets.read_tab("reimbursements")
         ]
-    return st.session_state.reimbursements
+    return st.session_state["_hsa_reimbursements"]
 
 
 def contributions(refresh: bool = False) -> list[Contribution]:
     if refresh:
-        st.session_state.pop("contributions", None)
-    if "contributions" not in st.session_state:
+        st.session_state.pop("_hsa_contributions", None)
+    if "_hsa_contributions" not in st.session_state:
         sheets, _ = clients()
-        st.session_state.contributions = [
+        st.session_state["_hsa_contributions"] = [
             Contribution.from_row(r) for r in sheets.read_tab("contributions")
         ]
-    return st.session_state.contributions
+    return st.session_state["_hsa_contributions"]
 
 
 # --- writes ----------------------------------------------------------------
@@ -106,13 +113,13 @@ def save_receipt(receipt: Receipt) -> None:
 def save_reimbursement(reimbursement: Reimbursement) -> None:
     sheets, _ = clients()
     sheets.upsert_row("reimbursements", reimbursement.to_row())
-    st.session_state.pop("reimbursements", None)
+    st.session_state.pop("_hsa_reimbursements", None)
 
 
 def save_contribution(contribution: Contribution) -> None:
     sheets, _ = clients()
     sheets.append_row("contributions", contribution.to_row())
-    st.session_state.pop("contributions", None)
+    st.session_state.pop("_hsa_contributions", None)
 
 
 def canonical_filename(receipt: Receipt, original_name: str) -> str:
