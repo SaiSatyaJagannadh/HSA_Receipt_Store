@@ -62,7 +62,10 @@ class Settings:
     def ready(self) -> list[str]:
         """Returns the list of missing things that block Google access."""
         missing = []
-        if not self.google_credentials_json or not resolve_path(self.google_credentials_json).exists():
+        have_file = bool(self.google_credentials_json) and resolve_path(
+            self.google_credentials_json
+        ).exists()
+        if not have_file and "google_token" not in _secrets():
             missing.append("Google credentials JSON path")
         if not self.drive_folder_id:
             missing.append("Drive folder ID")
@@ -98,9 +101,22 @@ def _coerce(name: str, value):
 
 
 def load_settings() -> Settings:
+    """Precedence: .env  <  st.secrets[hsa]  <  settings.json.
+
+    st.secrets is how a hosted deploy gets its folder/sheet IDs and API key,
+    since there is no .env file on the server.
+    """
     values = {}
     for name, env_key in _ENV_MAP.items():
         raw = os.getenv(env_key)
+        if raw not in (None, ""):
+            values[name] = _coerce(name, raw)
+    try:
+        hosted = _secrets()["hsa"]
+    except Exception:
+        hosted = {}
+    for name in _TYPES:
+        raw = hosted.get(name) if hasattr(hosted, "get") else None
         if raw not in (None, ""):
             values[name] = _coerce(name, raw)
     if SETTINGS_PATH.exists():
@@ -138,6 +154,43 @@ def credential_kind(path: Path) -> str:
     return "unknown"
 
 
+def _secrets() -> dict:
+    """st.secrets if we're inside a Streamlit run, else {}. Never raises."""
+    try:
+        import streamlit as st
+
+        return st.secrets
+    except Exception:
+        return {}
+
+
+def credentials_from_secrets():
+    """A hosted server has no browser, so the consent flow cannot run there.
+
+    Instead we ship an already-authorized refresh token in st.secrets and mint
+    access tokens from it. Returns None when not deployed, so local runs keep
+    using the interactive flow.
+    """
+    secrets = _secrets()
+    try:
+        token = secrets["google_token"]
+    except Exception:
+        return None
+
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+
+    creds = Credentials.from_authorized_user_info(dict(token), SCOPES)
+    if not creds.valid:
+        if not creds.refresh_token:
+            raise ValueError(
+                "google_token in secrets has no refresh_token. Re-run "
+                "scripts/export_deploy_secrets.py to mint a fresh one."
+            )
+        creds.refresh(Request())  # cannot persist here; the server is read-only
+    return creds
+
+
 def build_credentials(credentials_json: str):
     """Google auth from whichever credential file you point at.
 
@@ -148,8 +201,13 @@ def build_credentials(credentials_json: str):
     the Cloud project it was built in.
 
     A service account file still works, for Workspace accounts writing to a
-    Shared Drive.
+    Shared Drive. When deployed, a pre-authorized token in st.secrets wins,
+    because a hosted server cannot open a browser for consent.
     """
+    deployed = credentials_from_secrets()
+    if deployed is not None:
+        return deployed
+
     path = resolve_path(credentials_json)
     kind = credential_kind(path)
 
