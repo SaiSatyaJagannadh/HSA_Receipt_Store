@@ -179,7 +179,7 @@ for upload in uploads:
         preview, form_area = st.columns([1, 2])
         with preview:
             if not upload.name.lower().endswith(".pdf"):
-                st.image(raw_bytes, width="stretch")
+                st.image(raw_bytes, caption=upload.name, width="stretch")
             else:
                 st.caption("PDF — no inline preview.")
             st.caption(f"SHA-256 `{file_hash[:16]}…`")

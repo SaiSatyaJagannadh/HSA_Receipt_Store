@@ -39,18 +39,23 @@ def require_setup() -> bool:
 
 
 st.title("🧾 HSAVault")
+store.show_flash()
 
 if require_setup():
-    receipts = store.receipts()
+    with st.spinner("Reading your index from Google Sheets…"):
+        receipts = store.receipts()
 
-    if reason := st.session_state.pop("_hsa_offline_reason", None):
+    if reason := store.offline_reason():
         st.error(f"Could not reach Google Sheets — showing the local cache. ({reason})")
 
     # --- orphan repair check, once per session ----------------------------
     if "_hsa_orphans_checked" not in st.session_state:
         st.session_state["_hsa_orphans_checked"] = True
         try:
-            st.session_state["_hsa_orphans"] = store.find_orphans()
+            # A full Drive listing. Without the spinner the first load of the
+            # dashboard just sits there looking hung.
+            with st.spinner("Checking Drive for unindexed files…"):
+                st.session_state["_hsa_orphans"] = store.find_orphans()
         except Exception:
             st.session_state["_hsa_orphans"] = []
     if st.session_state.get("_hsa_orphans"):
@@ -204,6 +209,7 @@ if require_setup():
 
     if st.button("↻ Refresh from Google Sheets"):
         store.clear()
+        store.flash("Refreshed from Google Sheets.")
         st.rerun()
 
     footer()

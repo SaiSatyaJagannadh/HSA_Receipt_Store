@@ -150,7 +150,9 @@ with image_col:
     if receipt.drive_file_id and st.checkbox("Load image inline", key=f"img_{selected_id}"):
         try:
             _, drive = store.clients()
-            st.image(drive.download(receipt.drive_file_id), width="stretch")
+            with st.spinner("Downloading the original from Drive…"):
+                image_bytes = drive.download(receipt.drive_file_id)
+            st.image(image_bytes, caption=describe(selected_id), width="stretch")
         except Exception as exc:  # noqa: BLE001
             st.caption(f"Could not render inline: {exc}")
     st.caption(f"SHA-256 `{receipt.file_hash[:24]}…`")

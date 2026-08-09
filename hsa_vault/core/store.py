@@ -58,6 +58,16 @@ def clear() -> None:
 
 
 _FLASH = "_hsa_flash"
+_OFFLINE = "_hsa_offline_reason"
+
+
+def offline_reason() -> str | None:
+    """Why the receipts in hand came from the local cache, or None if they're live.
+
+    Read, never popped: the banner has to survive every rerun that serves the same
+    cached list, or the app silently presents stale data as current.
+    """
+    return st.session_state.get(_OFFLINE)
 
 
 def flash(message: str) -> None:
@@ -90,10 +100,12 @@ def receipts(refresh: bool = False) -> list[Receipt]:
         rows = sheets.read_tab("receipts")
         items = [Receipt.from_row(r) for r in rows]
         cache.rebuild(config.CACHE_PATH, items)
+        # Describes the data now held, so a recovered read must retract the banner.
+        st.session_state.pop(_OFFLINE, None)
     except Exception as exc:  # noqa: BLE001
         audit("store.read_failed", error=str(exc)[:300])
         items = cache.load(config.CACHE_PATH)
-        st.session_state["_hsa_offline_reason"] = str(exc)
+        st.session_state[_OFFLINE] = str(exc)
     st.session_state["_hsa_receipts"] = items
     return items
 

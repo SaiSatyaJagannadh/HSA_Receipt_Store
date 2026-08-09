@@ -48,7 +48,7 @@ All keys are namespaced `_hsa_*`. This is not cosmetic: a bare `st.session_state
 
 ### Confirmations must outlive the rerun
 
-`st.success()` immediately before `st.rerun()` never reaches the browser — the rerun discards the page mid-render, so a successful save looks identical to a no-op. Use `store.flash(msg)` to queue the message and `store.show_flash()` right after the page title to render it. Six call sites had this bug; all pages that save now follow this pattern.
+`st.success()` immediately before `st.rerun()` never reaches the browser — the rerun discards the page mid-render, so a successful save looks identical to a no-op. Use `store.flash(msg)` to queue the message and `store.show_flash()` right after the page title to render it. Seven call sites had this bug — six found at once, then Reimbursements a second time, because its save path needs a `data_editor` selection that `AppTest` cannot drive. `tests/test_flash_contract.py` now enforces the pattern by parsing every page's AST instead: no `st.success()` may sit immediately before an `st.rerun()`, and a page that calls `store.flash()` must also call `store.show_flash()`.
 
 ### Untrusted text
 

@@ -17,6 +17,7 @@ st.set_page_config(page_title="Reimbursements — HSAVault", page_icon="💸", l
 
 auth.require_login()
 st.title("💸 Reimbursements")
+store.show_flash()
 
 if store.settings().ready():
     st.warning("Connect Google first — see **Settings**.")
@@ -120,7 +121,7 @@ else:
                     st.error(f"Refused: {exc}")
                 else:
                     partial = [r for r, _, full in allocations if not full]
-                    st.success(
+                    store.flash(
                         f"Recorded ${withdrawal:,.2f} across {len(allocations)} receipt(s)."
                         + (f" {len(partial)} left partially claimable." if partial else "")
                     )
