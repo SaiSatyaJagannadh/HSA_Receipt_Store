@@ -187,16 +187,29 @@ own default is `0.0.0.0`, which would publish all of that to your local network.
 
 ### Deploying
 
-Live at **https://hsavault-sai.streamlit.app**. Three layers stand between the
-public internet and your records:
+Live at **https://hsavault-sai.streamlit.app**.
 
-1. **Private repo → private app.** Community Cloud only publishes *public* apps,
-   but an app deployed from a private repo requires Streamlit viewer sign-in.
-2. **In-app Google login** (`core/auth.py`), restricted to `allowed_emails`.
-3. **Fail-closed.** If `google_token` is in secrets but `[auth]` is missing, or
-   `allowed_emails` is empty, the app refuses to start rather than serving an
-   open door. Credentials without a gate is the one state that must never serve
-   traffic — `tests/test_auth.py` covers each refusal path.
+**The URL is public and reachable by anyone.** Community Cloud on the free tier
+only publishes public apps — private ones need a Snowflake plan. Repo visibility
+does not gate the app either: the repo can be public or private and the app URL
+stays open to the internet. Assume the URL is known.
+
+So exactly one thing stands between a passer-by and your medical expense history
+(plus, through the refresh token in secrets, write access to your Drive):
+
+- **In-app Google login** (`core/auth.py`), called at the top of all 8 pages
+  before anything renders, and restricted to `allowed_emails`. An anonymous
+  visitor gets a sign-in button and `st.stop()` — no receipt is ever read,
+  computed, or sent.
+- **Fail-closed**, because that gate is load-bearing and alone. If `google_token`
+  is in secrets but `[auth]` is missing, or `[auth.google]` is absent, or
+  `allowed_emails` is empty, the app refuses to start rather than serving an open
+  door. Credentials without a gate is the one state that must never serve
+  traffic — `tests/test_auth.py` covers each refusal path.
+
+Verify after any deploy: load the app in a logged-out browser and confirm you get
+the sign-in screen rather than the dashboard. Never remove `require_login()` from
+a page "temporarily" — on this hosting that publishes the page to everyone.
 
 To redeploy from scratch:
 

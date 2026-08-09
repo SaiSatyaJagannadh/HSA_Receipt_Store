@@ -62,6 +62,8 @@ Provider names come from a vision model reading a stranger's printout, and the S
 
 `core/auth.py` is **fail-closed and must stay that way**: Google credentials present with no `[auth]` section, no `[auth.google]` provider, or an empty `allowed_emails` all `st.stop()` rather than serve an open door. Credentials without a gate is the one state that must never serve traffic. `tests/test_auth.py` covers each refusal path.
 
+On Community Cloud's free tier the app URL is **public and reachable by anyone**, and repo visibility does not change that. `require_login()` is therefore the only thing protecting the data — treat removing it from a page, even temporarily, as publishing that page to the internet.
+
 Locally there is no login screen at all, which is why `.streamlit/config.toml` binds to `127.0.0.1` — Streamlit's own default is `0.0.0.0`, which would publish full read/write access to your Drive to the local network.
 
 Auth is OAuth-as-you, not a service account: service accounts have no Drive storage on personal accounts (`403 storageQuotaExceeded`, verified against the live API). A service account key is still detected and used if you point at one, for Workspace + Shared Drive setups.
