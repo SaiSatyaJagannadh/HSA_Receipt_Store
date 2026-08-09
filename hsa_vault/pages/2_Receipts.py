@@ -26,7 +26,15 @@ if store.settings().ready():
     st.stop()
 
 all_receipts = store.receipts()
-show_archived = st.sidebar.checkbox("Show archived receipts", value=False)
+archived_count = sum(1 for r in all_receipts if r.deleted)
+# Keyed, so the live count in the label cannot reset the widget: without a key
+# Streamlit derives identity from the label, and archiving something would change
+# the count, change the label, and silently flip the view back off.
+show_archived = st.sidebar.checkbox(
+    f"Show archived receipts ({archived_count})" if archived_count else "Show archived receipts",
+    value=False,
+    key="_hsa_show_archived",
+)
 pool = all_receipts if show_archived else ledger.active(all_receipts)
 
 if not pool:
@@ -142,6 +150,56 @@ def describe(rid: str) -> str:
 selected_id = st.selectbox("Pick a receipt", list(by_id), format_func=describe)
 receipt = by_id[selected_id]
 
+# --- archive / restore -----------------------------------------------------
+# Archiving is fully reversible — `deleted` is a flag and the file only moves to
+# _archive/ — so making the user type ARCHIVE was friction out of all proportion
+# to the risk, and it lived at the bottom of the page inside a collapsed
+# expander. Worse, nothing exposed the reverse, so a mis-click was permanent from
+# inside the app. One click to ask, one to confirm, and a way back.
+_PENDING = "_hsa_pending_archive"
+confirming = st.session_state.get(_PENDING) == selected_id
+
+status_col, action_col = st.columns([3, 1])
+with status_col:
+    if receipt.deleted:
+        st.caption(
+            "📦 **Archived** — the original sits in `HSA_Vault/_archive/` and is excluded "
+            "from your balance. Nothing was deleted from Drive."
+        )
+    else:
+        st.caption(f"Active — {PAYMENT_LABELS[receipt.payment_method]}.")
+with action_col:
+    if receipt.deleted:
+        if st.button("♻️ Restore", type="primary", width="stretch"):
+            with st.spinner("Moving the file back…"):
+                store.restore_receipt(receipt)
+            store.flash("Restored — it counts toward your balance again.")
+            st.rerun()
+    elif not confirming:
+        if st.button("🗑️ Archive", width="stretch"):
+            st.session_state[_PENDING] = selected_id
+            st.rerun()
+
+if confirming and not receipt.deleted:
+    with st.container(border=True):
+        st.warning(
+            f"Archive **{receipt.provider or 'this receipt'}**? It stops counting toward "
+            "your balance. Nothing is deleted — you can restore it from this page."
+        )
+        reason = st.text_input(
+            "Reason (optional — recorded in the edit history)", key=f"reason_{selected_id}"
+        )
+        yes, no = st.columns(2)
+        if yes.button("Archive it", type="primary", width="stretch"):
+            with st.spinner("Archiving…"):
+                store.archive_receipt(receipt, reason)
+            st.session_state.pop(_PENDING, None)
+            store.flash("Archived. Tick **Show archived receipts** in the sidebar to restore it.")
+            st.rerun()
+        if no.button("Cancel", width="stretch"):
+            st.session_state.pop(_PENDING, None)
+            st.rerun()
+
 image_col, edit_col = st.columns([1, 2])
 
 with image_col:
@@ -224,34 +282,15 @@ with edit_col:
             st.rerun()
 
 history = receipt.history()
-with st.expander(f"Edit history ({len(history)} entries)"):
+history_tab, raw_tab = st.tabs([f"Edit history ({len(history)})", "Raw extraction output"])
+with history_tab:
     if not history:
         st.caption("No edits recorded since this receipt was saved.")
     for entry in reversed(history):
         st.write(f"**{entry['ts']}** — {entry.get('note', '')}")
         st.json(entry.get("changes", {}), expanded=False)
-
-with st.expander("Raw extraction output"):
+with raw_tab:
     st.code(receipt.extraction_raw or "(none)", language="json")
 
-# --- soft delete -----------------------------------------------------------
-
 st.divider()
-if not receipt.deleted:
-    with st.expander("🗑️ Archive this receipt"):
-        st.warning(
-            "Archiving flags the row as deleted and moves the file to "
-            "`HSA_Vault/_archive/`. Nothing is ever hard-deleted from Drive."
-        )
-        reason = st.text_input("Reason (recorded in edit history)", key=f"reason_{selected_id}")
-        confirm = st.text_input(
-            "Type ARCHIVE to confirm", key=f"confirm_{selected_id}"
-        )
-        if st.button("Archive receipt", disabled=confirm != "ARCHIVE"):
-            store.archive_receipt(receipt, reason)
-            store.flash("Archived.")
-            st.rerun()
-else:
-    st.info("This receipt is archived. Its file is in `HSA_Vault/_archive/`.")
-
-st.caption("Not tax advice.")
+st.caption("Not tax advice. Archiving never deletes anything from Drive.")

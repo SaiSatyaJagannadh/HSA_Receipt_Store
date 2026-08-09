@@ -2,7 +2,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Tests](https://img.shields.io/badge/tests-183%20passing-3fb950)](#tests)
+[![Tests](https://img.shields.io/badge/tests-198%20passing-3fb950)](#tests)
 [![No network in tests](https://img.shields.io/badge/test%20suite-no%20network-8957e5)](#tests)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -53,6 +53,9 @@ Confirm your own eligibility with a qualified tax professional.
     reimburse yourself for later, even years later.
 - **Reimburse** yourself: select receipts, record the withdrawal, support partial
   amounts. HSA-card receipts never appear in the selection list.
+- **Archive and restore.** Deleting is a soft delete: the row is flagged and the
+  file moves to `_archive/`. Nothing is ever hard-deleted from Drive, and a
+  mis-click is one click to undo.
 - **Export** a self-contained audit packet PDF per tax year — cover page, summary
   table, category subtotals, and one page per receipt with the image and its
   metadata printed beneath it. Legible in black and white. Plus CSV and a ZIP of
@@ -335,7 +338,7 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-**183 tests, no network.** Every Google and model call is mocked, so the suite
+**198 tests, no network.** Every Google and model call is mocked, so the suite
 runs offline and deterministically.
 
 | File | Tests | Covers |
@@ -348,6 +351,8 @@ runs offline and deterministically.
 | `test_pdf_export.py` | 19 | reportlab markup injection and audit-packet contents. |
 | `test_flash_contract.py` | 17 | Static guard against the confirmation-after-rerun bug (below). |
 | `test_auth.py` | 12 | The fail-closed login gate, plus the Authlib dependency `st.login()` requires. |
+| `test_archive_flow.py` | 9 | Archive → restore round trip, and that the money comes back with it. |
+| `test_upload_flow.py` | 6 | The uploader empties itself once a batch is filed, and not before. |
 
 ### Why there is a page-rendering layer at all
 

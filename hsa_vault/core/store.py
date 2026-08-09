@@ -168,8 +168,7 @@ def commit_receipt(receipt: Receipt, original_bytes: bytes, original_name: str) 
     place and detected as an orphan on next launch (see `find_orphans`).
     """
     _, drive = clients()
-    year = receipt.tax_year or (receipt.service_date.year if receipt.service_date else 0) or 1970
-    folder = drive.year_folder(year)
+    folder = _home_folder(drive, receipt)
     filename = canonical_filename(receipt, original_name)
     audit("commit.upload_start", receipt_id=receipt.receipt_id, filename=filename)
     uploaded = drive.upload(original_bytes, filename, folder)
@@ -185,15 +184,19 @@ def adopt_receipt(receipt: Receipt, drive_file_id: str, original_name: str) -> R
     its year folder, then append the row. Used by Bulk Import and orphan repair —
     the bytes are never re-uploaded."""
     _, drive = clients()
-    year = receipt.tax_year or (receipt.service_date.year if receipt.service_date else 0) or 1970
     filename = canonical_filename(receipt, original_name)
     updated = drive.rename(drive_file_id, filename)
-    drive.move(drive_file_id, drive.year_folder(year))
+    drive.move(drive_file_id, _home_folder(drive, receipt))
     receipt.drive_file_id = drive_file_id
     receipt.drive_link = updated.get("webViewLink", "")
     save_receipt(receipt)
     audit("adopt.done", receipt_id=receipt.receipt_id, drive_file_id=drive_file_id)
     return receipt
+
+
+def _home_folder(drive: DriveClient, receipt: Receipt) -> str:
+    year = receipt.tax_year or (receipt.service_date.year if receipt.service_date else 0) or 1970
+    return drive.year_folder(year)
 
 
 def archive_receipt(receipt: Receipt, reason: str = "") -> Receipt:
@@ -205,6 +208,23 @@ def archive_receipt(receipt: Receipt, reason: str = "") -> Receipt:
     receipt.record_edit({"deleted": True}, note=reason or "archived")
     save_receipt(receipt)
     audit("receipt.archived", receipt_id=receipt.receipt_id, reason=reason)
+    return receipt
+
+
+def restore_receipt(receipt: Receipt, reason: str = "") -> Receipt:
+    """Undo an archive: clear the flag and move the file back to its year folder.
+
+    Archiving was always reversible in the data model — `deleted` is a flag and the
+    file only moves to `_archive/` — but nothing exposed the reverse, so a mis-click
+    was effectively permanent from inside the app.
+    """
+    _, drive = clients()
+    if receipt.drive_file_id:
+        drive.move(receipt.drive_file_id, _home_folder(drive, receipt))
+    receipt.deleted = False
+    receipt.record_edit({"deleted": False}, note=reason or "restored")
+    save_receipt(receipt)
+    audit("receipt.restored", receipt_id=receipt.receipt_id, reason=reason)
     return receipt
 
 

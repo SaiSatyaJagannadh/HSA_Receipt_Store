@@ -11,7 +11,7 @@ All commands run from `hsa_vault/`, not the repo root. The venv lives at the rep
 ```sh
 cd hsa_vault
 ../.venv/bin/streamlit run app.py                  # run the app
-../.venv/bin/python -m pytest tests -q             # full suite (183, no network)
+../.venv/bin/python -m pytest tests -q             # full suite (198, no network)
 ../.venv/bin/python -m pytest tests/test_ledger.py -q          # one file
 ../.venv/bin/python -m pytest tests/test_edit_flow.py -q -k provider   # one test
 ../.venv/bin/python -m scripts.bootstrap_sheet --create        # create the Sheet, grant consent
@@ -56,7 +56,7 @@ Provider names come from a vision model reading a stranger's printout, and the S
 
 ### Failure handling
 
-`util.retry()` wraps every Google and NVIDIA network call with exponential backoff and jitter. Extraction never raises — no API key, a rate limit, or a model replying with prose all degrade to manual entry, and the app never blocks a save. If a Drive upload succeeds and the Sheets write fails, the file becomes an orphan, detected on next launch and repairable from Bulk Import. Nothing is ever hard-deleted; archiving flags the row and moves the file to `_archive/`.
+`util.retry()` wraps every Google and NVIDIA network call with exponential backoff and jitter. Extraction never raises — no API key, a rate limit, or a model replying with prose all degrade to manual entry, and the app never blocks a save. If a Drive upload succeeds and the Sheets write fails, the file becomes an orphan, detected on next launch and repairable from Bulk Import. Nothing is ever hard-deleted; archiving flags the row and moves the file to `_archive/`, and `store.restore_receipt` is the exact inverse — it must keep putting the file back in the same folder `commit_receipt` would have chosen, which is why both go through `_home_folder`.
 
 ## Auth
 
