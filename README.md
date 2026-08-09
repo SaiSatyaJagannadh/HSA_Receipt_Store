@@ -1,11 +1,26 @@
 # HSAVault
 
-A personal HSA receipt vault. Your receipts live permanently in **your own Google
-Drive**, in a plain folder structure you can navigate without this app. A Google
-Sheet is the index. This application is a reporting layer over both.
+[![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Tests](https://img.shields.io/badge/tests-183%20passing-3fb950)](#tests)
+[![No network in tests](https://img.shields.io/badge/test%20suite-no%20network-8957e5)](#tests)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+**A personal HSA receipt vault built so that deleting the app costs you nothing.**
+
+Your receipts live permanently in **your own Google Drive**, in a plain folder
+structure you can navigate without this app. A Google Sheet is the index. This
+application is a reporting layer over both.
 
 If you delete this app tomorrow, your records remain complete, organized, and
 usable by a human or a CPA.
+
+> **Why this exists.** An HSA lets you pay a medical expense out of pocket today
+> and reimburse yourself from the account *years* later — but only if you can
+> still produce the receipt. That turns a shoebox of thermal paper into a
+> multi-decade record-keeping problem, and it makes one distinction expensive to
+> get wrong: a receipt already paid with the HSA card must never be claimed
+> again. The whole design falls out of those two facts.
 
 ```
 HSA_Vault/                                 <- your Drive folder
@@ -187,7 +202,9 @@ own default is `0.0.0.0`, which would publish all of that to your local network.
 
 ### Deploying
 
-Live at **https://hsavault-sai.streamlit.app**.
+This repository is the source only — no instance is published here. If you deploy
+your own to Streamlit Community Cloud, read this section first, because the
+hosting model is not what most people assume.
 
 **The URL is public and reachable by anyone.** Community Cloud on the free tier
 only publishes public apps — private ones need a Snowflake plan. Repo visibility
@@ -318,25 +335,41 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-144 tests, no network.
+**183 tests, no network.** Every Google and model call is mocked, so the suite
+runs offline and deterministically.
 
-- `test_ledger.py` — the balance math: HSA-card exclusion, partial
-  reimbursements, multi-receipt withdrawals, tax-year boundaries, duplicate
-  rejection, and the amount-filter bounds.
-- `test_extraction_parsing.py` — mocks the OpenAI SDK entirely; covers tolerant
-  reply parsing (fenced JSON, chatty preambles, invented categories, currency
-  symbols in the amount).
-- `test_pdf_export.py` — reportlab markup injection and packet contents.
-- `test_auth.py` — the fail-closed login gate, plus the Authlib dependency that
-  st.login() requires.
-- `test_pages.py` — renders all 8 pages through Streamlit's AppTest in four data
-  states: empty vault, one receipt, several identical amounts, and a mixed set.
+| File | Tests | Covers |
+|---|---:|---|
+| `test_ledger.py` | 34 | The balance math: HSA-card exclusion, partial reimbursements, multi-receipt withdrawals, tax-year boundaries, duplicate rejection, amount-filter bounds. |
+| `test_pages.py` | 33 | Renders all 8 pages through Streamlit's `AppTest` in four data states: empty vault, one receipt, several identical amounts, a mixed set. |
+| `test_extraction_parsing.py` | 25 | Mocks the OpenAI SDK entirely; tolerant reply parsing — fenced JSON, chatty preambles, invented categories, `$1,042.18` in the amount field. |
+| `test_models.py` | 22 | Row (de)serialization, validation, `Decimal` money quantization. |
+| `test_edit_flow.py` | 21 | Every editable field on the receipt form saves **and** confirms itself. |
+| `test_pdf_export.py` | 19 | reportlab markup injection and audit-packet contents. |
+| `test_flash_contract.py` | 17 | Static guard against the confirmation-after-rerun bug (below). |
+| `test_auth.py` | 12 | The fail-closed login gate, plus the Authlib dependency `st.login()` requires. |
 
-That last file exists because two bugs reached production while every unit test
-passed — a slider that collapsed on a single-receipt vault, and a session_state
-key that collided with a form key. Both were invisible until something actually
-rendered a page, and both were hidden further by fixtures that patched the very
-function under test. Patch the *loader*, not the accessor.
+### Why there is a page-rendering layer at all
+
+Three bugs reached production while every unit test passed: a slider that
+collapsed when `min == max` on a single-receipt vault, a `session_state` key that
+collided with a form key, and a save whose confirmation was erased by the
+`st.rerun()` that followed it. All three were invisible until something actually
+rendered a page — and two were hidden further by fixtures that patched the very
+function under test. **Patch the _loader_, not the accessor.**
+
+The last of those three came back. `st.success()` immediately before `st.rerun()`
+never reaches the browser: the rerun discards the page mid-render, so a
+successful save looks identical to a no-op. It was fixed at six call sites, then
+reappeared at a seventh — on the reimbursements page, where a silent write is
+most expensive, and which `AppTest` cannot reach because that path requires a
+`data_editor` row selection.
+
+So `test_flash_contract.py` stopped testing behaviour and started testing shape:
+it parses every page's AST and fails the build if any `st.success()` sits
+immediately before an `st.rerun()`, or if a page queues a confirmation without
+rendering one. Verified the only way a regression test is worth anything — by
+reverting the fix and confirming it failed on exactly that call site.
 
 ---
 
@@ -345,9 +378,11 @@ function under test. Patch the *loader*, not the accessor.
 ```
 hsa_vault/
   app.py                  Dashboard
+  .streamlit/config.toml  Binds to loopback; disables telemetry
   pages/                  Upload, Receipts, Reimbursements, Contributions,
                           Export, Bulk Import, Settings
   core/
+    auth.py               Fail-closed login gate for hosted deployments
     config.py             .env + settings.json, Google credentials
     models.py             Dataclasses, validation, row (de)serialization
     ledger.py             All balance math. Pure functions.
@@ -358,15 +393,43 @@ hsa_vault/
     pdf_export.py         Audit packet, CSV, ZIP
     store.py              App-facing layer over the above
     util.py               Hashing, slugs, retry, audit log
-  scripts/                bootstrap_sheet.py, seed_data.py
-  tests/
+  scripts/                bootstrap_sheet.py, seed_data.py,
+                          export_deploy_secrets.py
+  tests/                  183 tests, no network
 ```
 
-## Note on the model
+Two rules hold this shape together:
 
-The build spec named Claude. Extraction now runs on NVIDIA NIM instead, at the
-owner's request. Because NIM models honour `response_format` inconsistently, the
-JSON contract is stated in the prompt and the reply is parsed defensively —
-markdown fences, a chatty preamble, an invented category, or `$1,042.18` in the
-amount field are all handled rather than trusted. Swap models with
-`NVIDIA_MODEL`; nothing else in the codebase knows which model is in use.
+- **Only `store.py` and `auth.py` import Streamlit at module level.** Everything
+  else in `core/` is plain Python with no session state and no UI, which is what
+  makes it directly testable.
+- **Pages never touch Google clients.** Every page goes through `store.py`, which
+  owns client construction, the read caches, and cache invalidation on write.
+
+## Where the build diverged from the spec
+
+The original specification is checked in at
+[`hsa_vault_build_prompt.md`](hsa_vault_build_prompt.md). Two of its decisions
+did not survive contact with the actual APIs, and the reasoning is worth more
+than the spec was:
+
+**Auth: service account → OAuth-as-you.** The spec called for a Google service
+account with the Drive folder shared to it. That cannot work on a personal Google
+account — a service account has no Drive storage of its own, so every file it
+creates fails with `403 storageQuotaExceeded`, verified against the live API. The
+documented workaround is a Shared Drive, which is a Workspace-only feature. The
+app now authenticates as *you*, so the files are owned by you, which serves the
+core principle better than the spec's own mechanism did. A service account key is
+still detected and used if you point at one, for Workspace setups.
+
+**Extraction: a single named model → any OpenAI-compatible vision endpoint.**
+Extraction runs on NVIDIA NIM. Because NIM models honour `response_format`
+inconsistently, the JSON contract is stated in the prompt and the reply is parsed
+defensively — markdown fences, a chatty preamble, an invented category, or
+`$1,042.18` in the amount field are all handled rather than trusted. Swap models
+with `NVIDIA_MODEL`, or point `NVIDIA_BASE_URL` at a self-hosted container;
+nothing else in the codebase knows which model is in use.
+
+The general lesson both share: extraction is the least trustworthy part of the
+system, so no extracted value is ever written without a human confirming it, and
+the app degrades to manual entry rather than blocking a save.

@@ -11,7 +11,7 @@ All commands run from `hsa_vault/`, not the repo root. The venv lives at the rep
 ```sh
 cd hsa_vault
 ../.venv/bin/streamlit run app.py                  # run the app
-../.venv/bin/python -m pytest tests -q             # full suite (166, no network)
+../.venv/bin/python -m pytest tests -q             # full suite (183, no network)
 ../.venv/bin/python -m pytest tests/test_ledger.py -q          # one file
 ../.venv/bin/python -m pytest tests/test_edit_flow.py -q -k provider   # one test
 ../.venv/bin/python -m scripts.bootstrap_sheet --create        # create the Sheet, grant consent
@@ -94,6 +94,6 @@ Don't run `export_deploy_secrets --write` and then start the app locally — the
 
 ## Deployment
 
-Live at https://hsavault-sai.streamlit.app, deployed from `main` on Streamlit Community Cloud with hot-reload on push. The hosted app runs on a refresh token minted locally, since a server has no browser for the consent flow.
+This repo is source-only; no deployed instance is referenced here, and none should be added. If someone deploys it, the target is Streamlit Community Cloud from `main`, which hot-reloads on push. A hosted instance runs on a refresh token minted locally, since a server has no browser for the consent flow.
 
 Rapid consecutive pushes can trigger hot-reloads mid-import and segfault the app; the fix is Manage app → Reboot, not a code change. Before diagnosing a deploy failure as a code defect, confirm the modules import and the tests pass locally.
