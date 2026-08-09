@@ -27,6 +27,9 @@ receipts = store.receipts()
 claimable = ledger.selectable_for_reimbursement(receipts)
 balance = ledger.unreimbursed_balance(receipts)
 
+# Namespaced so a cache key can never collide with a widget key — see CLAUDE.md.
+_SELECTION = "_hsa_reimbursement_selection"
+
 st.metric("Unreimbursed claimable balance", f"${balance:,.2f}")
 
 if not claimable:
@@ -64,7 +67,7 @@ else:
             "Still claimable": st.column_config.NumberColumn(format="$%.2f"),
             "id": None,
         },
-        key="reimbursement_selection",
+        key=_SELECTION,
     )
 
     selected_ids = list(edited[edited["Select"]]["id"])
@@ -125,6 +128,10 @@ else:
                         f"Recorded ${withdrawal:,.2f} across {len(allocations)} receipt(s)."
                         + (f" {len(partial)} left partially claimable." if partial else "")
                     )
+                    # Settled receipts drop out of the list, and data_editor keys
+                    # its edits by row position — leaving the old ticks behind
+                    # would re-select whatever receipt slid up into those rows.
+                    st.session_state.pop(_SELECTION, None)
                     st.rerun()
 
 # --- history ---------------------------------------------------------------

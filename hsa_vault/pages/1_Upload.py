@@ -30,10 +30,18 @@ if store.settings().ready():
 settings = store.settings()
 existing = store.receipts()
 
+# Streamlit cannot drop a single file from a file_uploader's value, and the widget
+# cannot be emptied by writing to its session state. Re-keying it is the only way
+# to hand back an empty drop zone, so the key carries a round number that a
+# finished batch bumps.
+_ROUND = "_hsa_upload_round"
+_SAVED = "_hsa_saved_hashes"
+
 uploads = st.file_uploader(
     "Receipt images or PDFs",
     type=["jpg", "jpeg", "png", "heic", "heif", "pdf"],
     accept_multiple_files=True,
+    key=f"_hsa_uploads_{st.session_state.setdefault(_ROUND, 0)}",
 )
 
 if not uploads:
@@ -148,20 +156,29 @@ def confirmation_form(key: str, upload, data: dict, uncertain: set[str], raw: st
             )
             return
     store.flash(f"Saved — {receipt.provider or 'receipt'} filed under {receipt.tax_year}.")
-    st.session_state.setdefault("saved_hashes", set()).add(key)
+    saved = st.session_state.setdefault(_SAVED, set())
+    saved.add(key)
+    # Last one in the batch: hand back an empty drop zone instead of asking the
+    # user to remove the files themselves. Bumping the round is what makes the
+    # widget forget. Duplicates never enter `saved`, so a batch still holding an
+    # unresolved one keeps its card on screen rather than hiding the problem.
+    if all(sha256_hex(u.getvalue()) in saved for u in uploads):
+        st.session_state[_ROUND] += 1
+        st.session_state.pop(_SAVED, None)
     st.rerun()
 
 
-for upload in uploads:
+# A saved receipt drops off the list on the next render. Its confirmation is
+# already at the top of the page, so a spent card is nothing but clutter.
+_saved_hashes = st.session_state.get(_SAVED, set())
+pending = [u for u in uploads if sha256_hex(u.getvalue()) not in _saved_hashes]
+
+for upload in pending:
     raw_bytes = upload.getvalue()
     file_hash = sha256_hex(raw_bytes)
 
     with st.container(border=True):
         st.markdown(f"### {upload.name}")
-
-        if file_hash in st.session_state.get("saved_hashes", set()):
-            st.success("Saved. Remove it from the uploader above to clear this card.")
-            continue
 
         duplicate = ledger.is_duplicate(existing, file_hash)
         if duplicate:
@@ -184,7 +201,7 @@ for upload in uploads:
                 st.caption("PDF — no inline preview.")
             st.caption(f"SHA-256 `{file_hash[:16]}…`")
 
-        cache_key = f"extraction_{file_hash}"
+        cache_key = f"_hsa_extraction_{file_hash}"
         if cache_key not in st.session_state:
             with st.spinner("Reading the receipt…"):
                 pages = extraction.normalize(raw_bytes, upload.name)

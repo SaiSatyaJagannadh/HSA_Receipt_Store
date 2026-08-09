@@ -52,10 +52,10 @@ if st.button("📄 Generate audit packet", type="primary"):
     _, drive = store.clients()
     with st.spinner(f"Downloading {len(year_receipts)} receipt image(s) and building the PDF…"):
         pdf_bytes = pdf_export.build_audit_packet(receipts, tax_year, owner, drive.download)
-    st.session_state[f"packet_{tax_year}"] = pdf_bytes
+    st.session_state[f"_hsa_packet_{tax_year}"] = pdf_bytes
     st.success(f"Built a {len(pdf_bytes) / 1_000_000:.1f} MB packet.")
 
-packet = st.session_state.get(f"packet_{tax_year}")
+packet = st.session_state.get(f"_hsa_packet_{tax_year}")
 if packet:
     filename = f"HSA_Audit_Packet_{tax_year}.pdf"
     dl, save = st.columns(2)
@@ -89,10 +89,10 @@ with zip_col:
     if st.button("📦 Build ZIP of raw images", width="stretch"):
         _, drive = store.clients()
         with st.spinner("Downloading originals…"):
-            st.session_state[f"zip_{tax_year}"] = pdf_export.build_zip(
+            st.session_state[f"_hsa_zip_{tax_year}"] = pdf_export.build_zip(
                 receipts, tax_year, drive.download
             )
-    archive = st.session_state.get(f"zip_{tax_year}")
+    archive = st.session_state.get(f"_hsa_zip_{tax_year}")
     if archive:
         st.download_button(
             "⬇️ Download ZIP",

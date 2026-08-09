@@ -34,6 +34,10 @@ settings = store.settings()
 receipts = store.receipts()
 indexed_ids = {r.drive_file_id for r in receipts if r.drive_file_id}
 
+# Namespaced so a cache key can never collide with a widget key — see CLAUDE.md.
+_QUEUE = "_hsa_import_queue"
+_DONE = "_hsa_imported_ids"
+
 tab_scan, tab_orphans = st.tabs(["Scan a folder", "Repair orphans"])
 
 # --- orphan repair ---------------------------------------------------------
@@ -102,21 +106,40 @@ with tab_scan:
             result = extraction.extract(pages, settings.nvidia_api_key, settings.nvidia_model, settings.nvidia_base_url)
             queue.append({"meta": meta, "hash": file_hash, "result": result})
         progress.empty()
-        st.session_state.import_queue = queue
+        st.session_state[_QUEUE] = queue
+        st.session_state.pop(_DONE, None)
         st.success(f"Queued {len(queue)} file(s) for review.")
 
 # --- review queue ----------------------------------------------------------
 
-queue = st.session_state.get("import_queue", [])
+queue = st.session_state.get(_QUEUE, [])
 if queue:
     st.divider()
     pending = [
-        item
-        for item in queue
-        if item["meta"]["id"] not in st.session_state.get("imported_ids", set())
+        item for item in queue if item["meta"]["id"] not in st.session_state.get(_DONE, set())
     ]
-    st.subheader(f"Review queue — {len(pending)} remaining")
-    st.caption("Nothing is indexed until you confirm it. Skipping leaves the file untouched.")
+    if not pending:
+        # Every file was indexed or skipped. Retire the queue instead of leaving
+        # an empty "0 remaining" panel and a button to press.
+        st.session_state.pop(_QUEUE, None)
+        st.session_state.pop(_DONE, None)
+        store.flash(f"Review queue finished — all {len(queue)} file(s) handled.")
+        st.rerun()
+
+    # Errors and duplicates have no form to submit, so they can never be marked
+    # done. They are here to be read, not actioned — counting them as "remaining"
+    # makes a finished queue look stuck.
+    actionable = [i for i in pending if not (i.get("error") or i.get("duplicate"))]
+
+    if actionable:
+        st.subheader(f"Review queue — {len(actionable)} to confirm")
+        st.caption("Nothing is indexed until you confirm it. Skipping leaves the file untouched.")
+    else:
+        st.subheader(f"Nothing left to index — {len(pending)} file(s) need a look")
+        st.caption(
+            "These could not be queued: already in your index, or the download failed. "
+            "Read them, then dismiss."
+        )
 
     for item in pending:
         meta = item["meta"]
@@ -184,7 +207,7 @@ if queue:
                 skipped = skip.form_submit_button("Skip")
 
             if skipped:
-                st.session_state.setdefault("imported_ids", set()).add(meta["id"])
+                st.session_state.setdefault(_DONE, set()).add(meta["id"])
                 st.rerun()
 
             if confirmed:
@@ -211,13 +234,17 @@ if queue:
                     except Exception as exc:  # noqa: BLE001
                         st.error(f"Failed: {exc}")
                     else:
-                        st.session_state.setdefault("imported_ids", set()).add(meta["id"])
+                        st.session_state.setdefault(_DONE, set()).add(meta["id"])
                         store.flash("Indexed.")
                         st.rerun()
 
-    if st.button("Clear the queue"):
-        st.session_state.pop("import_queue", None)
-        st.session_state.pop("imported_ids", None)
+    # Kept as an escape hatch for abandoning a review part-way. A queue that runs
+    # to completion clears itself above, so this is never the way a finished
+    # queue goes away.
+    if st.button("Dismiss these" if not actionable else "Abandon the rest of the queue"):
+        st.session_state.pop(_QUEUE, None)
+        st.session_state.pop(_DONE, None)
+        store.flash("Queue discarded. Nothing was indexed.")
         st.rerun()
 
 st.caption("Not tax advice.")
