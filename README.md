@@ -2,7 +2,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Tests](https://img.shields.io/badge/tests-198%20passing-3fb950)](#tests)
+[![Tests](https://img.shields.io/badge/tests-204%20passing-3fb950)](#tests)
 [![No network in tests](https://img.shields.io/badge/test%20suite-no%20network-8957e5)](#tests)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -338,7 +338,7 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-**198 tests, no network.** Every Google and model call is mocked, so the suite
+**204 tests, no network.** Every Google and model call is mocked, so the suite
 runs offline and deterministically.
 
 | File | Tests | Covers |
@@ -353,6 +353,7 @@ runs offline and deterministically.
 | `test_auth.py` | 12 | The fail-closed login gate, plus the Authlib dependency `st.login()` requires. |
 | `test_archive_flow.py` | 9 | Archive → restore round trip, and that the money comes back with it. |
 | `test_upload_flow.py` | 6 | The uploader empties itself once a batch is filed, and not before. |
+| `test_reimbursement_write_order.py` | 6 | A withdrawal is on record before any receipt is marked paid by it. |
 
 ### Why there is a page-rendering layer at all
 

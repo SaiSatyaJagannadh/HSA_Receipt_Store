@@ -11,7 +11,7 @@ All commands run from `hsa_vault/`, not the repo root. The venv lives at the rep
 ```sh
 cd hsa_vault
 ../.venv/bin/streamlit run app.py                  # run the app
-../.venv/bin/python -m pytest tests -q             # full suite (198, no network)
+../.venv/bin/python -m pytest tests -q             # full suite (204, no network)
 ../.venv/bin/python -m pytest tests/test_ledger.py -q          # one file
 ../.venv/bin/python -m pytest tests/test_edit_flow.py -q -k provider   # one test
 ../.venv/bin/python -m scripts.bootstrap_sheet --create        # create the Sheet, grant consent
@@ -37,6 +37,8 @@ There is no linter or formatter configured. Match the surrounding style.
 ### Two payment methods, one balance
 
 `hsa_card` receipts are audit documentation only and never count toward the claimable balance; `out_of_pocket` receipts accumulate into it. Confusing the two causes double-claiming, which is the most expensive bug this app can have. `Receipt.claimable` returns 0 for deleted, hsa_card, or fully-reimbursed receipts. Partial reimbursements leave the remainder claimable.
+
+**Recording a withdrawal is N+1 writes with no transaction, so the order is load-bearing.** `store.record_reimbursement` writes the `reimbursements` row *before* marking any receipt, and it is the only thing that may do this — a page must not hand-roll the loop. If a write fails part-way, the money is on record and some receipts are unmarked, so the balance errs **high** and the gap shows in the withdrawal history. The reverse order leaves receipts marked with no record of where the money went, which is how the same dollars get claimed twice. `apply_allocation` mutates in place, so a failed save also rolls the receipt back and calls `clear()`; otherwise the session cache would serve an in-memory receipt that claims to be reimbursed when the Sheet says it is not. `tests/test_reimbursement_write_order.py` pins all of this.
 
 ### Money
 

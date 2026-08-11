@@ -2,9 +2,12 @@
 mirrors into SQLite. Every page uses this instead of touching clients directly.
 """
 
+from datetime import date
+from decimal import Decimal
+
 import streamlit as st
 
-from . import cache, config
+from . import cache, config, ledger
 from .drive import DriveClient
 from .models import (
     Contribution,
@@ -145,6 +148,66 @@ def save_reimbursement(reimbursement: Reimbursement) -> None:
     sheets, _ = clients()
     sheets.upsert_row("reimbursements", reimbursement.to_row())
     st.session_state.pop("_hsa_reimbursements", None)
+
+
+class PartialReimbursement(RuntimeError):
+    """The withdrawal was recorded but not every receipt it covers was marked.
+
+    Carries how far it got so the caller can say so instead of guessing.
+    """
+
+    def __init__(self, applied: int, total: int, cause: Exception):
+        super().__init__(str(cause))
+        self.applied = applied
+        self.total = total
+        self.cause = cause
+
+
+def record_reimbursement(
+    record: Reimbursement,
+    allocations: list[tuple[Receipt, Decimal, bool]],
+    when: date,
+) -> int:
+    """Write a withdrawal and mark the receipts it covers. Returns receipts marked.
+
+    Sheets has no transaction, so a failure part-way through is always possible and
+    the write order decides which half survives.
+
+    The withdrawal row goes first on purpose. A crash after it leaves the money on
+    record with some receipts not yet marked, so the claimable balance reads too
+    high and the gap is visible in the withdrawal history. The reverse — receipts
+    marked with no withdrawal row — drops the balance with nothing anywhere saying
+    where the money went, and a later reimbursement run would happily claim the
+    same dollars again.
+    """
+    save_reimbursement(record)
+    applied = 0
+    for receipt, amount, fully in allocations:
+        # apply_allocation mutates in place, so a failed write would otherwise
+        # leave an in-memory receipt claiming to be reimbursed when the Sheet says
+        # it is not — and the session cache would serve that until the next
+        # refresh, reading the balance too LOW. Undo the mutation on failure so
+        # memory never gets ahead of what was actually persisted.
+        before = (
+            receipt.reimbursement_amount,
+            receipt.reimbursement_date,
+            receipt.reimbursed,
+            receipt.edit_history,
+        )
+        try:
+            ledger.apply_allocation(receipt, amount, fully, when)
+            save_receipt(receipt)
+        except Exception as exc:  # noqa: BLE001
+            (
+                receipt.reimbursement_amount,
+                receipt.reimbursement_date,
+                receipt.reimbursed,
+                receipt.edit_history,
+            ) = before
+            clear()  # force the next read to come from Sheets, not this half-applied list
+            raise PartialReimbursement(applied, len(allocations), exc) from exc
+        applied += 1
+    return applied
 
 
 def save_contribution(contribution: Contribution) -> None:

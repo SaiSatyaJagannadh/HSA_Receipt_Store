@@ -107,21 +107,31 @@ else:
                 )
             else:
                 allocations = ledger.allocate_reimbursement(selected, withdrawal)
+                record = Reimbursement(
+                    date=withdrawal_date,
+                    amount=withdrawal,
+                    method=method.strip(),
+                    covered_receipt_ids=[r.receipt_id for r, _, _ in allocations],
+                    notes=notes.strip(),
+                )
                 try:
-                    for receipt, applied, fully in allocations:
-                        ledger.apply_allocation(receipt, applied, fully, withdrawal_date)
-                        store.save_receipt(receipt)
-                    store.save_reimbursement(
-                        Reimbursement(
-                            date=withdrawal_date,
-                            amount=withdrawal,
-                            method=method.strip(),
-                            covered_receipt_ids=[r.receipt_id for r, _, _ in allocations],
-                            notes=notes.strip(),
-                        )
+                    # store.record_reimbursement owns the write order — the
+                    # withdrawal row lands before any receipt is marked, so a
+                    # partial failure can only ever leave the balance too high.
+                    store.record_reimbursement(record, allocations, withdrawal_date)
+                except store.PartialReimbursement as exc:
+                    st.error(
+                        f"**Partly applied.** The ${withdrawal:,.2f} withdrawal is recorded, "
+                        f"but only {exc.applied} of {exc.total} receipt(s) were marked "
+                        f"before the write failed: {exc.cause}\n\n"
+                        "Your claimable balance is therefore too **high**, not too low — "
+                        "nothing has been double-claimed. Finish the remaining receipts in "
+                        "the Sheet's `receipts` tab (`reimbursed`, `reimbursement_amount`, "
+                        "`reimbursement_date`), or delete the withdrawal row from the "
+                        "`reimbursements` tab and record it again once Google is reachable."
                     )
-                except ValueError as exc:
-                    st.error(f"Refused: {exc}")
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"Nothing was changed — the withdrawal could not be recorded: {exc}")
                 else:
                     partial = [r for r, _, full in allocations if not full]
                     store.flash(
