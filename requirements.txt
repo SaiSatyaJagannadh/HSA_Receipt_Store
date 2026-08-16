@@ -5,6 +5,12 @@ google-auth>=2.35
 google-auth-oauthlib>=1.2
 # st.login() hard-requires this; it is NOT google-auth-oauthlib
 Authlib>=1.3.2
+# Authlib's Starlette integration imports httpx, but Authlib declares it only as
+# the optional [httpx] extra. Locally it arrives as a transitive dep of openai,
+# so login worked here and 500'd on the deployed app with
+# "ModuleNotFoundError: No module named 'httpx'" at /auth/login. Pin it directly
+# rather than depending on an unrelated package continuing to pull it in.
+httpx>=0.27
 python-dotenv>=1.0
 reportlab>=4.2
 Pillow>=11.0

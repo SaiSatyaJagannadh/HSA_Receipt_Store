@@ -11,7 +11,7 @@ All commands run from `hsa_vault/`, not the repo root. The venv lives at the rep
 ```sh
 cd hsa_vault
 ../.venv/bin/streamlit run app.py                  # run the app
-../.venv/bin/python -m pytest tests -q             # full suite (206, no network)
+../.venv/bin/python -m pytest tests -q             # full suite (208, no network)
 ../.venv/bin/python -m pytest tests/test_ledger.py -q          # one file
 ../.venv/bin/python -m pytest tests/test_edit_flow.py -q -k provider   # one test
 ../.venv/bin/python -m scripts.bootstrap_sheet --create        # create the Sheet, grant consent
@@ -71,6 +71,8 @@ Locally there is no login screen at all, which is why `.streamlit/config.toml` b
 Auth is OAuth-as-you, not a service account: service accounts have no Drive storage on personal accounts (`403 storageQuotaExceeded`, verified against the live API). A service account key is still detected and used if you point at one, for Workspace + Shared Drive setups.
 
 `st.login()` requires **Authlib**, which is not `google-auth-oauthlib`. Removing it from `requirements.txt` breaks login in a way that looks like a provider-config error.
+
+It also requires **httpx**, one layer deeper and easier to miss: `authlib.integrations.starlette_client` imports it, but Authlib declares it only as the optional `[httpx]` extra. Locally it arrives free as a transitive dependency of `openai`, so login works on your machine and the deployed app answers `/auth/login` with a bare `Internal server error` — the traceback ends in `ModuleNotFoundError: No module named 'httpx'`, visible only in the Cloud logs. Nothing in this codebase imports httpx directly, which is why nothing caught it. Both are pinned in `requirements.txt` and both are covered in `tests/test_auth.py`; a "listed" test is not enough, so there is also a test that actually imports `authlib.integrations.starlette_client`.
 
 ## Testing
 

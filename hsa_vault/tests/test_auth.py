@@ -224,3 +224,36 @@ def test_authlib_is_actually_importable():
     from streamlit.auth_util import is_authlib_installed
 
     assert is_authlib_installed(), "Authlib is not installed; st.login() will fail"
+
+def test_requirements_declares_httpx():
+    """Authlib's Starlette integration imports httpx, but Authlib declares it
+    only as the optional [httpx] extra.
+
+    Locally httpx arrives as a transitive dependency of openai, so login worked
+    here while the deployed app returned a bare "Internal server error" from
+    /auth/login with ModuleNotFoundError: No module named 'httpx'. Nothing in
+    the app's own code imports httpx, which is exactly why it went unnoticed.
+    """
+    import pathlib
+
+    req = (pathlib.Path(__file__).resolve().parents[2] / "requirements.txt").read_text()
+    declared = [
+        line.split("#")[0].strip().lower()
+        for line in req.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    assert any(d.startswith("httpx") for d in declared), (
+        "requirements.txt must declare httpx: Authlib imports it during st.login() "
+        "and does not install it itself"
+    )
+
+
+def test_the_authlib_starlette_client_actually_imports():
+    """The listed-vs-resolvable distinction, at the exact import that failed.
+
+    is_authlib_installed() only checks that `authlib` imports; the deployed
+    500 came from authlib.integrations.starlette_client, one layer deeper.
+    """
+    import importlib
+
+    importlib.import_module("authlib.integrations.starlette_client")
