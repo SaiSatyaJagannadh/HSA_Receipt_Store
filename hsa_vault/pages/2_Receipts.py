@@ -158,6 +158,9 @@ receipt = by_id[selected_id]
 # expander. Worse, nothing exposed the reverse, so a mis-click was permanent from
 # inside the app. One click to ask, one to confirm, and a way back.
 _PENDING = "_hsa_pending_archive"
+# A file_uploader cannot be emptied by writing to its state; re-keying it is the
+# only way to hand back an empty drop zone after a successful attach.
+_ATTACH_ROUND = "_hsa_attach_round"
 confirming = st.session_state.get(_PENDING) == selected_id
 
 status_col, action_col = st.columns([3, 1])
@@ -204,16 +207,57 @@ if confirming and not receipt.deleted:
 image_col, edit_col = st.columns([1, 2])
 
 with image_col:
+    # Every page, not just the first. A multi-page receipt used to show a single
+    # "open in Drive" link pointing at page 1, which reads as the other pages
+    # having failed to upload.
+    page_ids = [i for i in [receipt.drive_file_id, *receipt.extra_file_ids] if i]
+    if len(page_ids) > 1:
+        st.caption(f"📎 {len(page_ids)} pages attached to this receipt.")
     if receipt.drive_link:
         st.link_button("Open original in Drive ↗", receipt.drive_link)
-    if receipt.drive_file_id and st.checkbox("Load image inline", key=f"img_{selected_id}"):
+
+    if page_ids and st.checkbox("Load images inline", key=f"img_{selected_id}"):
         try:
             _, drive = store.clients()
-            with st.spinner("Downloading the original from Drive…"):
-                image_bytes = drive.download(receipt.drive_file_id)
-            st.image(image_bytes, caption=describe(selected_id), width="stretch")
+            for n, file_id in enumerate(page_ids, start=1):
+                with st.spinner(f"Downloading page {n} of {len(page_ids)}…"):
+                    image_bytes = drive.download(file_id)
+                st.image(
+                    image_bytes,
+                    caption=describe(selected_id)
+                    if len(page_ids) == 1
+                    else f"page {n} of {len(page_ids)}",
+                    width="stretch",
+                )
         except Exception as exc:  # noqa: BLE001
             st.caption(f"Could not render inline: {exc}")
+
+    # Kept outside the edit form on purpose: a file_uploader inside st.form only
+    # delivers its files on submit, which makes attaching feel like it did
+    # nothing until you also save an unrelated field.
+    with st.expander(f"📎 Attach more photos ({len(page_ids)} now)"):
+        st.caption(
+            "For a receipt you photographed in parts and filed before noticing. "
+            "The pages join this same record — the receipt ID, and any withdrawal "
+            "already pointing at it, are unchanged."
+        )
+        more = st.file_uploader(
+            "Extra pages",
+            type=["jpg", "jpeg", "png", "heic", "heif", "pdf"],
+            accept_multiple_files=True,
+            key=f"_hsa_attach_{selected_id}_{st.session_state.get(_ATTACH_ROUND, 0)}",
+        )
+        if more and st.button(f"Attach {len(more)} page(s)", type="primary", key=f"att_{selected_id}"):
+            try:
+                with st.spinner("Uploading to Drive…"):
+                    store.attach_pages(receipt, [(f.getvalue(), f.name) for f in more])
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Could not attach: {exc}")
+            else:
+                store.flash(f"Attached {len(more)} page(s) to this receipt.")
+                st.session_state[_ATTACH_ROUND] = st.session_state.get(_ATTACH_ROUND, 0) + 1
+                st.rerun()
+
     st.caption(f"SHA-256 `{receipt.file_hash[:24]}…`")
     st.caption(f"Receipt ID `{receipt.receipt_id}`")
 

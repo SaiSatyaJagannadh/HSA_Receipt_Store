@@ -11,7 +11,7 @@ All commands run from `hsa_vault/`, not the repo root. The venv lives at the rep
 ```sh
 cd hsa_vault
 ../.venv/bin/streamlit run app.py                  # run the app
-../.venv/bin/python -m pytest tests -q             # full suite (215, no network)
+../.venv/bin/python -m pytest tests -q             # full suite (221, no network)
 ../.venv/bin/python -m pytest tests/test_ledger.py -q          # one file
 ../.venv/bin/python -m pytest tests/test_edit_flow.py -q -k provider   # one test
 ../.venv/bin/python -m scripts.bootstrap_sheet --create        # create the Sheet, grant consent
@@ -35,6 +35,8 @@ There is no linter or formatter configured. Match the surrounding style.
 **`models.py` owns the wire format.** `RECEIPT_COLUMNS`, `TABS`, `CATEGORIES`, and `PAYMENT_METHODS` are the single source of truth for the Sheet's shape; `to_row`/`from_row` are the only serialization boundary. Adding a column means updating `RECEIPT_COLUMNS` and both methods together — the Sheet has to stay self-describing.
 
 New columns go on the **end**, never inserted. `read_tab` maps values positionally from `RECEIPT_COLUMNS` and pads short rows, so an existing row simply reads back `""` for a column added later and no migration is needed. The Sheet's own header row is cosmetic — nothing reads it — but it is what a human sees, so run `python -m scripts.bootstrap_sheet` once after adding a column to rewrite the headers. `extra_file_ids` (the extra pages of a receipt photographed in parts) was added this way.
+
+**The SQLite cache is dropped, not migrated.** `CREATE TABLE IF NOT EXISTS` keeps an outdated table, so adding a column left every insert failing with `table receipts has 21 columns but 22 values were supplied` — and because that raised inside `store.receipts()`, the app reported Sheets as unreachable and served stale rows, hiding a receipt that had saved perfectly. `cache._match_schema` now compares `PRAGMA table_info` against `RECEIPT_COLUMNS` (order included, since inserts are positional) and recreates the table on any difference. Relatedly, `cache.rebuild` is called outside that try block: Sheets has already answered by then, so a failure writing the disposable mirror must never discard live rows or claim the app is offline.
 
 **A receipt can own more than one Drive file.** `drive_file_id` is page one; `extra_file_ids` is the rest. Anything that touches a receipt's files must use `store._all_file_ids`, not `drive_file_id` alone — `archive_receipt` and `restore_receipt` would otherwise strand half the pages in the wrong folder, and `find_orphans` would report page two as unindexed on every launch, forever.
 

@@ -11,6 +11,7 @@ where an upload would have put it, and the page offers the round trip in two
 clicks with no typing.
 """
 
+import base64
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -217,3 +218,127 @@ def test_an_archived_receipt_offers_a_way_back(page):
     at = click(at, "♻️ Restore")
     assert restored, "Restore did not call store.restore_receipt"
     assert at.success and "Restored" in at.success[0].value
+
+
+# --- multi-page receipts ---------------------------------------------------
+
+# Smallest valid PNG reportlab will accept, so the embed path runs for real
+# rather than falling through to the "image not embedded" branch.
+PNG_1PX = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
+
+def test_the_audit_packet_embeds_every_page(monkeypatch):
+    """A packet built from drive_file_id alone documents an amount its own
+    attached image does not show.
+
+    Real case: a receipt filed at $294.94 whose first page reads $275.00, with
+    the grand total on page two. The packet is the artifact this app exists to
+    produce; omitting half the evidence is the worst failure it has.
+    """
+    from core import pdf_export
+
+    receipt = make_receipt(
+        provider="Pledge Financial",
+        amount=Decimal("294.94"),
+        service_date=date(2026, 8, 16),
+    )
+    receipt.drive_file_id = "page1"
+    receipt.extra_file_ids = ["page2"]
+
+    fetched: list[str] = []
+
+    def fetch(file_id):
+        fetched.append(file_id)
+        return PNG_1PX
+
+    pdf_export.build_audit_packet([receipt], 2026, "Owner", fetch)
+
+    assert fetched == ["page1", "page2"], (
+        f"the packet fetched {fetched} — page two never reached the PDF"
+    )
+
+
+def test_the_zip_export_includes_every_page(monkeypatch):
+    from core import pdf_export
+
+    receipt = make_receipt(amount=Decimal("10.00"), service_date=date(2026, 8, 16))
+    receipt.drive_file_id = "page1"
+    receipt.extra_file_ids = ["page2", "page3"]
+
+    blob = pdf_export.build_zip([receipt], 2026, lambda fid: PNG_1PX)
+
+    import io
+    import zipfile
+
+    names = zipfile.ZipFile(io.BytesIO(blob)).namelist()
+    images = [n for n in names if not n.endswith(".csv")]
+    assert len(images) == 3, f"expected 3 page files, got {images}"
+    assert any(n.endswith("__p2") for n in images), "page 2 missing from the archive"
+
+
+def test_attaching_a_page_keeps_the_same_receipt(monkeypatch):
+    """Noticing a missing half after filing must not mean re-uploading.
+
+    Archiving and re-uploading mints a new receipt_id, which any reimbursement
+    already citing this receipt points away from.
+    """
+    uploaded: list[str] = []
+
+    class Drive:
+        def upload(self, data, name, folder):
+            uploaded.append(name)
+            return {"id": f"new{len(uploaded)}", "webViewLink": "https://drive/x"}
+
+        def year_folder(self, year):
+            return str(year)
+
+        def archive_folder(self):
+            return "archive"
+
+    saved: list[Receipt] = []
+    monkeypatch.setattr(store, "clients", lambda: (None, Drive()))
+    monkeypatch.setattr(store, "save_receipt", lambda r: saved.append(r))
+
+    receipt = make_receipt(provider="Clinic", amount=Decimal("50.00"))
+    receipt.drive_file_id = "page1"
+    original_id = receipt.receipt_id
+
+    store.attach_pages(receipt, [(b"bytes", "second.png")], reason="found the other half")
+
+    assert receipt.receipt_id == original_id, "attaching must not re-identify the receipt"
+    assert receipt.extra_file_ids == ["new1"]
+    assert uploaded and uploaded[0].startswith("p2__"), (
+        f"page numbering did not continue from the existing pages: {uploaded}"
+    )
+    assert saved, "the new page was uploaded but never recorded on the row"
+    assert "found the other half" in receipt.edit_history
+
+
+def test_attaching_numbers_pages_after_the_ones_already_there(monkeypatch):
+    """A second attach must not collide with the first."""
+    uploaded: list[str] = []
+
+    class Drive:
+        def upload(self, data, name, folder):
+            uploaded.append(name)
+            return {"id": f"id{len(uploaded)}", "webViewLink": ""}
+
+        def year_folder(self, year):
+            return str(year)
+
+        def archive_folder(self):
+            return "archive"
+
+    monkeypatch.setattr(store, "clients", lambda: (None, Drive()))
+    monkeypatch.setattr(store, "save_receipt", lambda r: None)
+
+    receipt = make_receipt(provider="Clinic", amount=Decimal("50.00"))
+    receipt.drive_file_id = "page1"
+    receipt.extra_file_ids = ["page2"]
+
+    store.attach_pages(receipt, [(b"x", "third.png")])
+
+    assert uploaded[0].startswith("p3__"), f"expected p3__, got {uploaded[0]}"
+    assert receipt.extra_file_ids == ["page2", "id1"]

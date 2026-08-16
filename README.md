@@ -2,7 +2,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Tests](https://img.shields.io/badge/tests-215%20passing-3fb950)](#tests)
+[![Tests](https://img.shields.io/badge/tests-221%20passing-3fb950)](#tests)
 [![No network in tests](https://img.shields.io/badge/test%20suite-no%20network-8957e5)](#tests)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -50,6 +50,9 @@ Confirm your own eligibility with a qualified tax professional.
   saved as one record, and every image is kept in Drive. Saved separately, each
   half carries only part of the information — and since the total is usually
   printed once, on the last page, the first half would save with no amount at all.
+  Pages can also be **attached later** from the Receipts page, keeping the same
+  receipt ID, for the half you only notice is missing after filing. Every page
+  goes into the audit packet and the ZIP.
 - **Track** two kinds of receipt separately, because confusing them causes
   double-claiming:
   - `hsa_card` — paid at the register with the HSA card. Audit documentation
@@ -362,7 +365,7 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-**215 tests, no network.** Every Google and model call is mocked, so the suite
+**221 tests, no network.** Every Google and model call is mocked, so the suite
 runs offline and deterministically.
 
 | File | Tests | Covers |
@@ -375,7 +378,7 @@ runs offline and deterministically.
 | `test_pdf_export.py` | 19 | reportlab markup injection and audit-packet contents. |
 | `test_flash_contract.py` | 18 | Static guards: the confirmation-after-rerun bug (below), and that every page reading receipts also warns when they are stale. |
 | `test_auth.py` | 14 | The fail-closed login gate, plus the Authlib and httpx dependencies `st.login()` requires. |
-| `test_archive_flow.py` | 9 | Archive → restore round trip, and that the money comes back with it. |
+| `test_archive_flow.py` | 13 | Archive → restore round trip and that the money comes back with it; multi-page receipts reaching the audit packet, the ZIP, and `attach_pages`. |
 | `test_upload_flow.py` | 9 | The uploader empties itself once a batch is filed, and not before; and several photos of one receipt save as a single record. |
 | `test_reimbursement_write_order.py` | 6 | A withdrawal is on record before any receipt is marked paid by it. |
 

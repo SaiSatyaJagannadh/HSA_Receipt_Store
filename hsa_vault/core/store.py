@@ -134,13 +134,22 @@ def receipts(refresh: bool = False) -> list[Receipt]:
         sheets, _ = clients()
         rows = sheets.read_tab("receipts")
         items = [Receipt.from_row(r) for r in rows]
-        cache.rebuild(config.CACHE_PATH, items)
         # Describes the data now held, so a recovered read must retract the banner.
         st.session_state.pop(_OFFLINE, None)
     except Exception as exc:  # noqa: BLE001
         audit("store.read_failed", error=str(exc)[:300])
         items = cache.load(config.CACHE_PATH)
         st.session_state[_OFFLINE] = str(exc)
+    else:
+        # Mirroring is deliberately outside the try. Sheets already answered, so
+        # these rows are live and authoritative; a failure writing the disposable
+        # copy must not discard them and claim the app is offline. It did exactly
+        # that when a new column outgrew the cache's table, hiding a receipt that
+        # had in fact saved perfectly.
+        try:
+            cache.rebuild(config.CACHE_PATH, items)
+        except Exception as exc:  # noqa: BLE001
+            audit("cache.rebuild_failed", error=str(exc)[:300])
     st.session_state["_hsa_receipts"] = items
     return items
 
@@ -298,6 +307,34 @@ def commit_receipt(
 
 def _all_file_ids(receipt: Receipt) -> list[str]:
     return [i for i in [receipt.drive_file_id, *receipt.extra_file_ids] if i]
+
+
+def attach_pages(receipt: Receipt, pages: list[tuple[bytes, str]], reason: str = "") -> Receipt:
+    """Add more photos to a receipt that is already filed.
+
+    You rarely notice the second half of a receipt is missing until you are
+    looking at the record. Without this the only route was to archive and
+    re-upload, which changes the receipt_id every withdrawal already points at.
+
+    Uploads first, records after: a failure leaves an unindexed file that Bulk
+    Import can adopt, never a row citing a file that was never stored.
+    """
+    if not pages:
+        return receipt
+    _, drive = clients()
+    folder = drive.archive_folder() if receipt.deleted else _home_folder(drive, receipt)
+    start = len(_all_file_ids(receipt)) + 1
+    new_ids = [
+        drive.upload(data, f"p{n}__{canonical_filename(receipt, name)}", folder)["id"]
+        for n, (data, name) in enumerate(pages, start=start)
+    ]
+    receipt.extra_file_ids = [*receipt.extra_file_ids, *new_ids]
+    receipt.record_edit(
+        {"extra_file_ids": len(receipt.extra_file_ids)}, note=reason or "pages attached"
+    )
+    save_receipt(receipt)
+    audit("receipt.pages_attached", receipt_id=receipt.receipt_id, added=len(new_ids))
+    return receipt
 
 
 def adopt_receipt(receipt: Receipt, drive_file_id: str, original_name: str) -> Receipt:

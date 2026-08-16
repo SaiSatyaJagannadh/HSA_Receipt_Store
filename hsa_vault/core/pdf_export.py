@@ -242,14 +242,24 @@ def build_audit_packet(
         label = receipt.provider or "Receipt"
         amount = f"${receipt.amount:.2f}" if receipt.amount is not None else "amount unknown"
         story.append(Paragraph(f"{index}. {safe(label)} — {amount}", H2))
-        image = None
-        if fetch_image and receipt.drive_file_id:
-            try:
-                image = _fit_image(fetch_image(receipt.drive_file_id), doc.width, 5.6 * inch)
-            except Exception:
-                image = None
-        if image is not None:
-            story.extend([image, Spacer(1, 0.15 * inch)])
+        # Every page, not just the first. A receipt photographed in halves has
+        # its total on the last page, so a packet built from drive_file_id alone
+        # documents an amount the attached image does not show — the one thing
+        # this document exists to avoid.
+        file_ids = [i for i in [receipt.drive_file_id, *receipt.extra_file_ids] if i]
+        images = []
+        if fetch_image:
+            for page_no, file_id in enumerate(file_ids, start=1):
+                try:
+                    fitted = _fit_image(fetch_image(file_id), doc.width, 5.6 * inch)
+                except Exception:
+                    continue
+                if len(file_ids) > 1:
+                    images.append(para(f"Page {page_no} of {len(file_ids)}", SMALL))
+                images.append(fitted)
+                images.append(Spacer(1, 0.15 * inch))
+        if images:
+            story.extend(images)
         else:
             story.extend(
                 [
@@ -289,12 +299,14 @@ def build_zip(
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(f"HSA_{tax_year}_index.csv", build_csv(receipts, tax_year))
         for r in year_receipts:
-            if not r.drive_file_id:
-                continue
-            try:
-                data = fetch_image(r.drive_file_id)
-            except Exception:
-                continue
+            file_ids = [i for i in [r.drive_file_id, *r.extra_file_ids] if i]
             name = f"{r.service_date or 'undated'}__{r.provider or 'unknown'}__{r.file_hash[:8]}"
-            archive.writestr(f"{tax_year}/{name}", data)
+            for page_no, file_id in enumerate(file_ids, start=1):
+                try:
+                    data = fetch_image(file_id)
+                except Exception:
+                    continue
+                # Page 1 keeps the original name so existing archives are stable.
+                suffix = "" if page_no == 1 else f"__p{page_no}"
+                archive.writestr(f"{tax_year}/{name}{suffix}", data)
     return buffer.getvalue()

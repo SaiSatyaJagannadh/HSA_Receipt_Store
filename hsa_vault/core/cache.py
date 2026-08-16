@@ -25,7 +25,31 @@ def connect(path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _match_schema(conn)
     return conn
+
+
+def _match_schema(conn: sqlite3.Connection) -> None:
+    """Drop and recreate the table when RECEIPT_COLUMNS has moved on.
+
+    `CREATE TABLE IF NOT EXISTS` silently keeps an old table, so adding a column
+    left every insert failing with "table receipts has 21 columns but 22 values
+    were supplied". Because that raised inside the read path, the app reported
+    Sheets as unreachable and served the stale cache — a newly saved receipt
+    simply disappeared from the list.
+
+    Dropping is correct rather than lazy: this file is a mirror, `rebuild()`
+    repopulates it from the Sheet on the very next read, and nothing here is
+    authoritative. Order matters as well as membership, since inserts are
+    positional.
+    """
+    columns = [r["name"] for r in conn.execute("PRAGMA table_info(receipts)")]
+    if columns == RECEIPT_COLUMNS:
+        return
+    audit("cache.schema_changed", had=len(columns), want=len(RECEIPT_COLUMNS))
+    with conn:
+        conn.execute("DROP TABLE IF EXISTS receipts")
+    conn.executescript(SCHEMA)
 
 
 def rebuild(path: Path, receipts: list[Receipt]) -> int:
