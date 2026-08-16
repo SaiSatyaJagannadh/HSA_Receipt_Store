@@ -32,6 +32,7 @@ if store.settings().ready():
 
 settings = store.settings()
 receipts = store.receipts()
+store.show_offline()
 indexed_ids = {r.drive_file_id for r in receipts if r.drive_file_id}
 
 # Namespaced so a cache key can never collide with a widget key — see CLAUDE.md.

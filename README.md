@@ -2,7 +2,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Tests](https://img.shields.io/badge/tests-205%20passing-3fb950)](#tests)
+[![Tests](https://img.shields.io/badge/tests-206%20passing-3fb950)](#tests)
 [![No network in tests](https://img.shields.io/badge/test%20suite-no%20network-8957e5)](#tests)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -347,7 +347,7 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-**205 tests, no network.** Every Google and model call is mocked, so the suite
+**206 tests, no network.** Every Google and model call is mocked, so the suite
 runs offline and deterministically.
 
 | File | Tests | Covers |
@@ -358,7 +358,7 @@ runs offline and deterministically.
 | `test_models.py` | 22 | Row (de)serialization, validation, `Decimal` money quantization. |
 | `test_edit_flow.py` | 21 | Every editable field on the receipt form saves **and** confirms itself. |
 | `test_pdf_export.py` | 19 | reportlab markup injection and audit-packet contents. |
-| `test_flash_contract.py` | 17 | Static guard against the confirmation-after-rerun bug (below). |
+| `test_flash_contract.py` | 18 | Static guards: the confirmation-after-rerun bug (below), and that every page reading receipts also warns when they are stale. |
 | `test_auth.py` | 12 | The fail-closed login gate, plus the Authlib dependency `st.login()` requires. |
 | `test_archive_flow.py` | 9 | Archive → restore round trip, and that the money comes back with it. |
 | `test_upload_flow.py` | 6 | The uploader empties itself once a batch is filed, and not before. |

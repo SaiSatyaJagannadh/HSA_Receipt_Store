@@ -45,25 +45,7 @@ if require_setup():
     with st.spinner("Reading your index from Google Sheets…"):
         receipts = store.receipts()
 
-    if reason := store.offline_reason():
-        # invalid_grant is not a network failure: Google was reached and refused
-        # the stored token. Nothing will recover on its own and no save will go
-        # through, so it needs a different instruction from "try again later".
-        if "invalid_grant" in reason:
-            st.error(
-                "**Google sign-in has expired.** Google answered — it rejected the saved "
-                "token — so this is the local cache, and saving will fail until it is "
-                "renewed.\n\n"
-                "Renew it: `python -m scripts.bootstrap_sheet`, then "
-                "`python -m scripts.export_deploy_secrets` and paste the `[google_token]` "
-                "block into the deployed app's secrets.\n\n"
-                "If this comes back roughly every week, the cause is the Google Cloud "
-                "OAuth consent screen still being in **Testing** — Google expires refresh "
-                "tokens from a testing app after 7 days. Publishing the app to production "
-                "is the actual fix; re-minting alone just restarts the clock."
-            )
-        else:
-            st.error(f"Could not reach Google Sheets — showing the local cache. ({reason})")
+    store.show_offline()
 
     # --- orphan repair check, once per session ----------------------------
     if "_hsa_orphans_checked" not in st.session_state:

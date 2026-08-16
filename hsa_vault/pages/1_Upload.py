@@ -29,6 +29,7 @@ if store.settings().ready():
 
 settings = store.settings()
 existing = store.receipts()
+store.show_offline()
 
 # Streamlit cannot drop a single file from a file_uploader's value, and the widget
 # cannot be emptied by writing to its session state. Re-keying it is the only way

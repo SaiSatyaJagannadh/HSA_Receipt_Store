@@ -78,3 +78,31 @@ def test_offline_reason_retracts_once_sheets_is_reachable_again():
     assert store.offline_reason() == "connection refused"
     st.session_state.pop(store._OFFLINE, None)
     assert store.offline_reason() is None
+
+
+def test_every_page_that_reads_receipts_also_warns_when_they_are_stale():
+    """An empty read and a failed read must never look identical.
+
+    Only app.py rendered the offline banner, so with a dead token the Receipts
+    page showed a bare "No receipts yet." — byte for byte what a brand-new vault
+    looks like, on the one page you would open to check whether your receipts
+    survived. Five pages had this. Verified live against the deployed app.
+    """
+    offenders = []
+    for path in PAGES:
+        source = path.read_text()
+        tree = ast.parse(source)
+        calls = {
+            f"{n.func.value.id}.{n.func.attr}"
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and isinstance(n.func.value, ast.Name)
+        }
+        if "store.receipts" in calls and "store.show_offline" not in calls:
+            offenders.append(path.name)
+
+    assert not offenders, (
+        "these pages read receipts but never say when the data is stale, so a "
+        f"failed read is indistinguishable from an empty vault: {offenders}"
+    )

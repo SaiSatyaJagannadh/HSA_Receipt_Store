@@ -26,6 +26,7 @@ if store.settings().ready():
     st.stop()
 
 all_receipts = store.receipts()
+store.show_offline()
 archived_count = sum(1 for r in all_receipts if r.deleted)
 # Keyed, so the live count in the label cannot reset the widget: without a key
 # Streamlit derives identity from the label, and archiving something would change

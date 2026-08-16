@@ -17,6 +17,7 @@ if store.settings().ready():
     st.stop()
 
 receipts = store.receipts()
+store.show_offline()
 years = sorted({r.tax_year for r in ledger.active(receipts) if r.tax_year}, reverse=True)
 
 if not years:

@@ -24,6 +24,7 @@ if store.settings().ready():
     st.stop()
 
 receipts = store.receipts()
+store.show_offline()
 claimable = ledger.selectable_for_reimbursement(receipts)
 balance = ledger.unreimbursed_balance(receipts)
 
