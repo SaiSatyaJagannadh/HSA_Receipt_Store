@@ -1,6 +1,7 @@
 # iOS
 
-A native client is viable, and this is where it starts.
+A native SwiftUI client. The screens and the balance rule are written and
+compile; what is missing is Google auth and the REST clients behind them.
 
 Nothing in `hsa_vault/` ports — Streamlit is a server-rendered Python web
 framework with no iOS target, so all eight pages are throwaway. What survives is
@@ -18,6 +19,35 @@ balance is worse than no client at all: both would show a confident number for
 the same Sheet, and the difference between them is medical dollars claimed from
 the HSA twice. `hsa_vault/tests/test_ledger.py` is the specification;
 `Sources/HSAVaultCoreChecks/main.swift` mirrors it case for case.
+
+## Building
+
+```sh
+cd ios/HSAVaultCore
+swift build                    # compiles the app, views included
+swift run HSAVaultCoreChecks   # the balance rule
+```
+
+There is no Xcode on this machine, so no iOS SDK and no simulator — `xcrun --sdk
+iphoneos` fails outright. The macOS SDK *is* present and SwiftUI is identical on
+both platforms for everything used here, so building for the macOS host compiles
+exactly the view code an iOS target would. That is what makes the UI verifiable
+rather than merely written.
+
+To run it on a phone: open the package in Xcode, add an iOS app target, point it
+at `ReceiptListView()`. The views need no changes.
+
+## The screens
+
+| File | What it is |
+|---|---|
+| `HSAVaultApp.swift` | App entry. Identical on iOS and macOS. |
+| `ReceiptListView.swift` | Balance header, then the receipts. The balance is first because it is the number the product exists to compute. |
+| `ReceiptDetailView.swift` | One receipt, with the payment method spelled out — "HSA card" and "out of pocket" look interchangeable, and confusing them is how dollars get claimed twice. |
+| `ReceiptSource.swift` | The seam. Screens are written against a protocol, not against Google, so the UI is complete before any auth exists. |
+
+A failed load never blanks the list — showing nothing is indistinguishable from
+an empty vault, which is a bug the Python app actually shipped.
 
 ## Running the checks
 

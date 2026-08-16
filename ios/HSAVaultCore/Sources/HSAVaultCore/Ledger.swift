@@ -41,29 +41,38 @@ public enum PaymentMethod: String, Codable, Sendable {
 
 public struct Receipt: Identifiable, Sendable {
     public let id: String
+    public var provider: String
     public var serviceDate: Date?
     public var amount: Decimal?
     public var paymentMethod: PaymentMethod
     public var reimbursed: Bool
     public var reimbursementAmount: Decimal?
     public var deleted: Bool
+    /// A receipt photographed in parts is one record with several images. The
+    /// Python side stores page one in `drive_file_id` and the rest in
+    /// `extra_file_ids`; this is just the count, for display.
+    public var pageCount: Int
 
     public init(
         id: String,
+        provider: String = "",
         serviceDate: Date? = nil,
         amount: Decimal? = nil,
         paymentMethod: PaymentMethod = .outOfPocket,
         reimbursed: Bool = false,
         reimbursementAmount: Decimal? = nil,
-        deleted: Bool = false
+        deleted: Bool = false,
+        pageCount: Int = 1
     ) {
         self.id = id
+        self.provider = provider
         self.serviceDate = serviceDate
         self.amount = amount
         self.paymentMethod = paymentMethod
         self.reimbursed = reimbursed
         self.reimbursementAmount = reimbursementAmount
         self.deleted = deleted
+        self.pageCount = pageCount
     }
 
     /// Dollars still claimable from the HSA for this receipt.

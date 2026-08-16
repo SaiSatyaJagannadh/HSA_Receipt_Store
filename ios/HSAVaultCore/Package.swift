@@ -18,5 +18,9 @@ let package = Package(
     targets: [
         .target(name: "HSAVaultCore"),
         .executableTarget(name: "HSAVaultCoreChecks", dependencies: ["HSAVaultCore"]),
+        // The screens. SwiftUI is identical on iOS and macOS for everything used
+        // here, so building for the macOS host compiles the same view code an
+        // iOS target would — which is how the UI is verified without an iOS SDK.
+        .executableTarget(name: "HSAVaultApp", dependencies: ["HSAVaultCore"]),
     ]
 )

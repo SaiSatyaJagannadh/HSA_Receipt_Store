@@ -117,6 +117,23 @@ check(
     ).map(\.receiptID) == ["dated"],
     "an undated receipt sorted before a dated one")
 
+// MARK: - What the screens will show
+
+// The sample the UI renders must obey the same rule, or the first screenshot of
+// the app is already wrong: the HSA-card receipt is the largest number on it.
+let sample = [
+    Receipt(id: "1", provider: "Pledge Financial MD LLC", amount: dec("294.94"),
+            paymentMethod: .hsaCard, pageCount: 3),
+    Receipt(id: "2", provider: "CVS Pharmacy", amount: dec("42.18"), paymentMethod: .outOfPocket),
+    Receipt(id: "3", provider: "Dr. Ruiz", amount: dec("310.00"), paymentMethod: .outOfPocket,
+            reimbursementAmount: dec("50.00")),
+    Receipt(id: "4", provider: "eyebuydirect.com", amount: dec("27.40"),
+            paymentMethod: .outOfPocket),
+]
+check(
+    Ledger.unreimbursedBalance(sample), dec("329.58"),
+    "the balance the list screen displays is wrong")
+
 // MARK: - Report
 
 if failures.isEmpty {
