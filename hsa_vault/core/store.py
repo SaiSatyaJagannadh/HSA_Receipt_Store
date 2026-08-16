@@ -337,6 +337,55 @@ def attach_pages(receipt: Receipt, pages: list[tuple[bytes, str]], reason: str =
     return receipt
 
 
+class LastPage(ValueError):
+    """Refusing to detach the only page a receipt has."""
+
+
+def detach_page(receipt: Receipt, file_id: str, reason: str = "") -> Receipt:
+    """Remove one page from a receipt — for the photo that was simply wrong.
+
+    Consistent with everything else here, the file is moved to `_archive/` and
+    never hard-deleted, so a mis-click costs a move rather than the evidence.
+
+    Removing page one promotes the next page in its place, since `drive_file_id`
+    is what the Drive link, the audit packet's first image and the ZIP filename
+    all key off. Detaching the *only* page is refused: a receipt with no document
+    is exactly the state this vault exists to prevent, and archiving the whole
+    receipt is the operation that was actually meant.
+    """
+    pages = _all_file_ids(receipt)
+    if file_id not in pages:
+        raise ValueError("that page does not belong to this receipt")
+    if len(pages) == 1:
+        raise LastPage(
+            "This is the receipt's only page. Archive the whole receipt instead — "
+            "a receipt with no document proves nothing."
+        )
+
+    _, drive = clients()
+    drive.move(file_id, drive.archive_folder())
+
+    if file_id == receipt.drive_file_id:
+        promoted, *rest = receipt.extra_file_ids
+        receipt.drive_file_id = promoted
+        receipt.extra_file_ids = rest
+        # The link is what the Receipts page and the packet's fallback text show;
+        # leaving it pointing at the detached file is worse than having none.
+        try:
+            receipt.drive_link = drive.metadata(promoted).get("webViewLink", "")
+        except Exception:  # noqa: BLE001
+            receipt.drive_link = ""
+    else:
+        receipt.extra_file_ids = [i for i in receipt.extra_file_ids if i != file_id]
+
+    receipt.record_edit(
+        {"extra_file_ids": len(receipt.extra_file_ids)}, note=reason or "page detached"
+    )
+    save_receipt(receipt)
+    audit("receipt.page_detached", receipt_id=receipt.receipt_id, file_id=file_id)
+    return receipt
+
+
 def adopt_receipt(receipt: Receipt, drive_file_id: str, original_name: str) -> Receipt:
     """Index a file that is already in Drive: rename it canonically, move it into
     its year folder, then append the row. Used by Bulk Import and orphan repair —

@@ -229,6 +229,23 @@ with image_col:
                     else f"page {n} of {len(page_ids)}",
                     width="stretch",
                 )
+                # Removing the wrong photo has to be possible from where you are
+                # looking at it. Only offered when another page would remain —
+                # store.detach_page refuses to leave a receipt with no document.
+                if len(page_ids) > 1 and st.button(
+                    f"🗑️ Remove page {n}", key=f"rm_{selected_id}_{file_id}"
+                ):
+                    try:
+                        store.detach_page(receipt, file_id)
+                    except store.LastPage as exc:
+                        st.warning(str(exc))
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"Could not remove that page: {exc}")
+                    else:
+                        store.flash(
+                            f"Page {n} removed and moved to _archive/ — it is not deleted."
+                        )
+                        st.rerun()
         except Exception as exc:  # noqa: BLE001
             st.caption(f"Could not render inline: {exc}")
 

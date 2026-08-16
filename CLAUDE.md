@@ -11,7 +11,7 @@ All commands run from `hsa_vault/`, not the repo root. The venv lives at the rep
 ```sh
 cd hsa_vault
 ../.venv/bin/streamlit run app.py                  # run the app
-../.venv/bin/python -m pytest tests -q             # full suite (221, no network)
+../.venv/bin/python -m pytest tests -q             # full suite (224, no network)
 ../.venv/bin/python -m pytest tests/test_ledger.py -q          # one file
 ../.venv/bin/python -m pytest tests/test_edit_flow.py -q -k provider   # one test
 ../.venv/bin/python -m scripts.bootstrap_sheet --create        # create the Sheet, grant consent
@@ -38,7 +38,7 @@ New columns go on the **end**, never inserted. `read_tab` maps values positional
 
 **The SQLite cache is dropped, not migrated.** `CREATE TABLE IF NOT EXISTS` keeps an outdated table, so adding a column left every insert failing with `table receipts has 21 columns but 22 values were supplied` — and because that raised inside `store.receipts()`, the app reported Sheets as unreachable and served stale rows, hiding a receipt that had saved perfectly. `cache._match_schema` now compares `PRAGMA table_info` against `RECEIPT_COLUMNS` (order included, since inserts are positional) and recreates the table on any difference. Relatedly, `cache.rebuild` is called outside that try block: Sheets has already answered by then, so a failure writing the disposable mirror must never discard live rows or claim the app is offline.
 
-**A receipt can own more than one Drive file.** `drive_file_id` is page one; `extra_file_ids` is the rest. Anything that touches a receipt's files must use `store._all_file_ids`, not `drive_file_id` alone — `archive_receipt` and `restore_receipt` would otherwise strand half the pages in the wrong folder, and `find_orphans` would report page two as unindexed on every launch, forever.
+**A receipt can own more than one Drive file.** `drive_file_id` is page one; `extra_file_ids` is the rest. `store.detach_page` removes one page: it archives the file rather than deleting it, and if the page removed is `drive_file_id` it promotes the next one and refreshes `drive_link`, because that field backs the Drive link, the packet's first image and the ZIP filename. Detaching the last remaining page raises `store.LastPage` — a receipt with no document is the one state this vault exists to prevent, and archiving the receipt is the operation actually intended. Anything that touches a receipt's files must use `store._all_file_ids`, not `drive_file_id` alone — `archive_receipt` and `restore_receipt` would otherwise strand half the pages in the wrong folder, and `find_orphans` would report page two as unindexed on every launch, forever.
 
 ### Two payment methods, one balance
 

@@ -342,3 +342,77 @@ def test_attaching_numbers_pages_after_the_ones_already_there(monkeypatch):
 
     assert uploaded[0].startswith("p3__"), f"expected p3__, got {uploaded[0]}"
     assert receipt.extra_file_ids == ["page2", "id1"]
+
+
+def _drive_double(moved, links=None):
+    class Drive:
+        def move(self, file_id, parent):
+            moved.append((file_id, parent))
+
+        def archive_folder(self):
+            return "archive"
+
+        def year_folder(self, year):
+            return str(year)
+
+        def metadata(self, file_id):
+            return {"webViewLink": (links or {}).get(file_id, "")}
+
+    return Drive()
+
+
+def test_a_wrong_extra_photo_can_be_removed(monkeypatch):
+    """Attaching the wrong photo must be undoable from the page you see it on."""
+    moved: list = []
+    monkeypatch.setattr(store, "clients", lambda: (None, _drive_double(moved)))
+    monkeypatch.setattr(store, "save_receipt", lambda r: None)
+
+    receipt = make_receipt(provider="Clinic", amount=Decimal("10.00"))
+    receipt.drive_file_id = "page1"
+    receipt.extra_file_ids = ["page2", "page3"]
+
+    store.detach_page(receipt, "page2", reason="wrong photo")
+
+    assert receipt.extra_file_ids == ["page3"]
+    assert receipt.drive_file_id == "page1", "the primary page must not move"
+    assert moved == [("page2", "archive")], "the file was not archived — or was hard-deleted"
+    assert "wrong photo" in receipt.edit_history
+
+
+def test_removing_page_one_promotes_the_next_page(monkeypatch):
+    """drive_file_id backs the Drive link, the packet's first image and the ZIP
+    filename, so it can never be left empty while other pages exist."""
+    moved: list = []
+    monkeypatch.setattr(
+        store, "clients", lambda: (None, _drive_double(moved, {"page2": "https://drive/p2"}))
+    )
+    monkeypatch.setattr(store, "save_receipt", lambda r: None)
+
+    receipt = make_receipt(provider="Clinic", amount=Decimal("10.00"))
+    receipt.drive_file_id = "page1"
+    receipt.drive_link = "https://drive/p1"
+    receipt.extra_file_ids = ["page2"]
+
+    store.detach_page(receipt, "page1")
+
+    assert receipt.drive_file_id == "page2", "the receipt was left with no primary file"
+    assert receipt.extra_file_ids == []
+    assert receipt.drive_link == "https://drive/p2", (
+        "the link still points at the page that was just detached"
+    )
+
+
+def test_the_only_page_cannot_be_detached(monkeypatch):
+    """A receipt with no document proves nothing — archive it instead."""
+    moved: list = []
+    monkeypatch.setattr(store, "clients", lambda: (None, _drive_double(moved)))
+    monkeypatch.setattr(store, "save_receipt", lambda r: None)
+
+    receipt = make_receipt(provider="Clinic", amount=Decimal("10.00"))
+    receipt.drive_file_id = "page1"
+
+    with pytest.raises(store.LastPage):
+        store.detach_page(receipt, "page1")
+
+    assert receipt.drive_file_id == "page1"
+    assert moved == [], "the file was archived even though the detach was refused"
