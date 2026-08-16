@@ -156,3 +156,28 @@ def test_ready_survives_a_missing_secrets_file(monkeypatch):
     monkeypatch.setattr(st, "secrets", Exploding())
     settings = config.Settings(drive_folder_id="f", sheet_id="s")
     assert settings.ready() == ["Google credentials JSON path"]
+
+
+def test_expired_sign_in_is_not_reported_as_a_network_failure(wired, monkeypatch):
+    """invalid_grant means Google answered and refused — a retry never fixes it.
+
+    Reported as "could not reach", it reads as flaky Wi-Fi, so the real cause (a
+    refresh token that a Testing-status OAuth app expires after 7 days) goes
+    unfixed while every save silently fails against a stale cache.
+    """
+    from streamlit.testing.v1 import AppTest
+
+    wired(MIXED)
+    monkeypatch.setattr(
+        store,
+        "offline_reason",
+        lambda: "('invalid_grant: Token has been expired or revoked.', {...})",
+    )
+    at = AppTest.from_file(str(APP_DIR / "app.py"), default_timeout=90)
+    at.run()
+
+    assert not at.exception
+    shown = " ".join(e.value for e in at.error)
+    assert "sign-in has expired" in shown
+    assert "Could not reach Google Sheets" not in shown, "shown as a network blip"
+    assert "bootstrap_sheet" in shown, "no instruction for how to renew it"

@@ -2,7 +2,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Tests](https://img.shields.io/badge/tests-204%20passing-3fb950)](#tests)
+[![Tests](https://img.shields.io/badge/tests-205%20passing-3fb950)](#tests)
 [![No network in tests](https://img.shields.io/badge/test%20suite-no%20network-8957e5)](#tests)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -145,6 +145,15 @@ revoked. Run it from a terminal, not from inside Streamlit.
 
 <https://myaccount.google.com/permissions> → HSAVault → Remove access. Then
 `rm ~/.hsavault/token.json`.
+
+If the app shows **"Google sign-in has expired"** and the underlying error is
+`invalid_grant: Token has been expired or revoked`, the refresh token is dead —
+Google was reached and refused it, so retrying never helps. Re-run
+`python -m scripts.bootstrap_sheet` to mint a new one (and
+`python -m scripts.export_deploy_secrets` if a hosted copy is running on it).
+If it dies again about a week later, the consent screen is still in *Testing* —
+see the note in step 3. Publishing is the fix; re-minting only restarts the
+7-day clock.
 
 ### 8. NVIDIA API key
 
@@ -338,13 +347,13 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-**204 tests, no network.** Every Google and model call is mocked, so the suite
+**205 tests, no network.** Every Google and model call is mocked, so the suite
 runs offline and deterministically.
 
 | File | Tests | Covers |
 |---|---:|---|
 | `test_ledger.py` | 34 | The balance math: HSA-card exclusion, partial reimbursements, multi-receipt withdrawals, tax-year boundaries, duplicate rejection, amount-filter bounds. |
-| `test_pages.py` | 33 | Renders all 8 pages through Streamlit's `AppTest` in four data states: empty vault, one receipt, several identical amounts, a mixed set. |
+| `test_pages.py` | 34 | Renders all 8 pages through Streamlit's `AppTest` in four data states: empty vault, one receipt, several identical amounts, a mixed set. Also pins that an expired sign-in is not reported as a network blip. |
 | `test_extraction_parsing.py` | 25 | Mocks the OpenAI SDK entirely; tolerant reply parsing — fenced JSON, chatty preambles, invented categories, `$1,042.18` in the amount field. |
 | `test_models.py` | 22 | Row (de)serialization, validation, `Decimal` money quantization. |
 | `test_edit_flow.py` | 21 | Every editable field on the receipt form saves **and** confirms itself. |
