@@ -2,7 +2,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Tests](https://img.shields.io/badge/tests-213%20passing-3fb950)](#tests)
+[![Tests](https://img.shields.io/badge/tests-215%20passing-3fb950)](#tests)
 [![No network in tests](https://img.shields.io/badge/test%20suite-no%20network-8957e5)](#tests)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -173,9 +173,19 @@ than a code change. Free-endpoint vision models that work here:
 | Model | Notes |
 |---|---|
 | `meta/llama-3.2-90b-vision-instruct` | Default. Strongest general reading. |
-| `meta/llama-3.2-11b-vision-instruct` | Faster and cheaper, less accurate on faint print. |
+| `meta/llama-3.2-11b-vision-instruct` | Faster and cheaper, less accurate on faint print. **One image per request** — multi-page receipts fall back to a call per page. |
 | `nvidia/nemotron-nano-12b-v2-vl` | Multi-image and document Q&A. |
 | `nvidia/llama-3.1-nemotron-nano-vl-8b-v1` | Tuned for document intelligence. |
+
+**The free endpoints are not uniformly available**, and a model that stops
+answering looks exactly like a broken app. Measured on the same two-page receipt
+in one sitting: the 90B default and `nemotron-nano-12b-v2-vl` both timed out
+(~91s, the full attempt budget); `nemotron-nano-vl-8b` returned
+`500 'NVLM_D2_Config' object has no attribute 'vocab_size'` in 1.1s; and
+`llama-3.2-11b` answered in 1–24s and read the receipt correctly. If extraction
+starts reporting timeouts, switch models on the **Settings** page before assuming
+anything is wrong with the code — `settings.json` takes precedence over `.env`,
+so nothing on disk needs editing.
 
 Point `NVIDIA_BASE_URL` at your own host to run a self-hosted NIM container
 instead.
@@ -352,14 +362,14 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-**213 tests, no network.** Every Google and model call is mocked, so the suite
+**215 tests, no network.** Every Google and model call is mocked, so the suite
 runs offline and deterministically.
 
 | File | Tests | Covers |
 |---|---:|---|
 | `test_ledger.py` | 34 | The balance math: HSA-card exclusion, partial reimbursements, multi-receipt withdrawals, tax-year boundaries, duplicate rejection, amount-filter bounds. |
 | `test_pages.py` | 34 | Renders all 8 pages through Streamlit's `AppTest` in four data states: empty vault, one receipt, several identical amounts, a mixed set. Also pins that an expired sign-in is not reported as a network blip. |
-| `test_extraction_parsing.py` | 27 | Mocks the OpenAI SDK entirely; tolerant reply parsing — fenced JSON, chatty preambles, invented categories, `$1,042.18` in the amount field. |
+| `test_extraction_parsing.py` | 29 | Mocks the OpenAI SDK entirely; tolerant reply parsing — fenced JSON, chatty preambles, invented categories, `$1,042.18` in the amount field. |
 | `test_models.py` | 22 | Row (de)serialization, validation, `Decimal` money quantization. |
 | `test_edit_flow.py` | 21 | Every editable field on the receipt form saves **and** confirms itself. |
 | `test_pdf_export.py` | 19 | reportlab markup injection and audit-packet contents. |

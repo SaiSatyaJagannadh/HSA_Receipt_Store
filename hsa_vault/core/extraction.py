@@ -254,6 +254,41 @@ def _call(client, model: str, blocks: list[dict]):
     )
 
 
+# Some NIM models accept exactly one image per request and reject the rest with a
+# 400: "At most 1 image(s) may be provided in one prompt" (verified against
+# meta/llama-3.2-11b-vision-instruct). A receipt photographed in parts still has
+# to be readable there, so we fall back to one call per page and merge.
+_ONE_IMAGE_ONLY = re.compile(r"at most \d+ image", re.I)
+
+
+def _merge_pages(results: list[dict]) -> dict:
+    """Combine per-page extractions of a single receipt.
+
+    First non-null wins for identity fields — provider, date and patient are on
+    the first page. total_amount takes the LAST non-null instead: the total is
+    printed at the bottom, which is the final photo. Guessing the other way round
+    picks up a subtotal or a line-item price and silently understates the claim.
+    """
+    merged: dict = {}
+    for page in results:
+        for key, value in page.items():
+            if value in (None, "", [], {}):
+                continue
+            if key == "line_items":
+                merged.setdefault(key, []).extend(value)
+            elif key == "ambiguities":
+                merged.setdefault(key, []).extend(value)
+            elif key == "total_amount":
+                merged[key] = value  # last page wins
+            else:
+                merged.setdefault(key, value)
+    merged.setdefault("ambiguities", []).append(
+        f"This model reads one image at a time, so the {len(results)} pages were read "
+        "separately and combined. Check the total."
+    )
+    return merged
+
+
 def extract(
     pages: list[tuple[str, bytes]],
     api_key: str,
@@ -277,7 +312,21 @@ def extract(
             # cost a dozen requests.
             max_retries=0,
         )
-        response = _call(client, model, [_image_block(m, b) for m, b in pages])
+        try:
+            response = _call(client, model, [_image_block(m, b) for m, b in pages])
+        except Exception as exc:  # noqa: BLE001
+            if len(pages) < 2 or not _ONE_IMAGE_ONLY.search(str(exc)):
+                raise
+            audit("extraction.per_page_fallback", model=model, pages=len(pages))
+            singles = [
+                _call(client, model, [_image_block(m, b)]) for m, b in pages
+            ]
+            texts = [(s.choices[0].message.content or "") for s in singles]
+            data = normalize_fields(
+                _merge_pages([normalize_fields(parse_reply(t)) for t in texts])
+            )
+            audit("extraction.ok", model=model, provider=data.get("provider"))
+            return Extraction(data=data, raw="\n".join(texts))
         text = response.choices[0].message.content or ""
         data = normalize_fields(parse_reply(text))
         audit("extraction.ok", model=model, provider=data.get("provider"))

@@ -314,3 +314,59 @@ def test_a_hanging_endpoint_gives_up_instead_of_retrying_forever(fake_openai):
     assert extraction.ATTEMPTS * extraction.REQUEST_TIMEOUT <= 180, (
         "worst-case wait before manual entry is longer than anyone will sit through"
     )
+
+
+def test_a_one_image_model_still_reads_a_multi_page_receipt(fake_openai):
+    """Some NIM models cap at one image and 400 the rest.
+
+    Verified against meta/llama-3.2-11b-vision-instruct, which is the only model
+    that responded at all in benchmarking:
+        400 - "At most 1 image(s) may be provided in one prompt"
+    Without a fallback, ticking "these are one receipt" would fail outright on
+    exactly the model that works.
+    """
+    calls = {"n": 0}
+
+    class Refusing:
+        def create(self, **kwargs):
+            blocks = kwargs["messages"][1]["content"]
+            images = [b for b in blocks if b["type"] == "image_url"]
+            if len(images) > 1:
+                raise ValueError(
+                    "Error code: 400 - {'message': 'At most 1 image(s) may be "
+                    "provided in one prompt.'}"
+                )
+            calls["n"] += 1
+            payload = dict(GOOD_PAYLOAD, total_amount=None) if calls["n"] == 1 else dict(
+                GOOD_PAYLOAD, provider=None, total_amount="275.00"
+            )
+            return FakeResponse(payload)
+
+    fake_openai_client = sys.modules["openai"].OpenAI
+
+    class Client(fake_openai_client):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.chat = types.SimpleNamespace(completions=Refusing())
+
+    sys.modules["openai"].OpenAI = Client
+
+    result = extraction.extract(
+        [("image/jpeg", b"p1"), ("image/jpeg", b"p2")], "nvapi-x", MODEL
+    )
+
+    assert not result.error, f"the fallback did not engage: {result.error}"
+    assert result.data["provider"] == "CVS Pharmacy", "page 1 identity fields were lost"
+    assert result.data["total_amount"] == "275.00", (
+        "the total is printed on the LAST page; taking the first non-null loses it"
+    )
+    assert any("one image at a time" in a for a in result.ambiguities), (
+        "reading pages separately is a caveat the user must see"
+    )
+
+
+def test_a_single_page_failure_is_not_retried_page_by_page(fake_openai):
+    """The fallback is only for the multi-image refusal, not for every 400."""
+    fake_openai["raise"] = ValueError("Error code: 400 - {'message': 'bad request'}")
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
+    assert result.error, "a genuine bad request must still surface"
