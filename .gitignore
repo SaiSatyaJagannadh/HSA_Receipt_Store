@@ -443,3 +443,7 @@ token.json
 
 **/.streamlit/secrets.toml
 secrets.toml
+
+# Swift / iOS
+ios/**/.build/
+ios/**/.swiftpm/
