@@ -23,6 +23,16 @@ from .util import audit, retry
 MAX_EDGE = 2000
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
+# How long one attempt may take, and how many attempts. Both matter more than
+# they look: the openai SDK defaults to a 600s timeout AND its own max_retries=2,
+# which multiplied with the retry decorator below into 12 attempts of up to ten
+# minutes each. A slow free-tier endpoint therefore parked "Reading the receipt…"
+# for as long as the user was willing to sit there — measured at over six minutes
+# for a single 150KB image before being killed. Extraction is optional by design
+# (manual entry always works), so failing fast beats waiting.
+REQUEST_TIMEOUT = 45.0
+ATTEMPTS = 2
+
 # The response contract. NIM models vary in how strictly they honour
 # response_format, so this shape is also spelled out in the prompt and the
 # reply is parsed defensively.
@@ -218,7 +228,7 @@ def normalize_fields(data: dict) -> dict:
     return out
 
 
-@retry(tries=4)
+@retry(tries=ATTEMPTS, base=0.5)
 def _call(client, model: str, blocks: list[dict]):
     return client.chat.completions.create(
         model=model,
@@ -258,7 +268,15 @@ def extract(
     try:
         from openai import OpenAI
 
-        client = OpenAI(api_key=api_key, base_url=base_url or DEFAULT_BASE_URL)
+        client = OpenAI(
+            api_key=api_key,
+            base_url=base_url or DEFAULT_BASE_URL,
+            timeout=REQUEST_TIMEOUT,
+            # retry() above owns retries. Leaving the SDK's default of 2 in place
+            # multiplies with it instead of adding, which is how one upload could
+            # cost a dozen requests.
+            max_retries=0,
+        )
         response = _call(client, model, [_image_block(m, b) for m, b in pages])
         text = response.choices[0].message.content or ""
         data = normalize_fields(parse_reply(text))

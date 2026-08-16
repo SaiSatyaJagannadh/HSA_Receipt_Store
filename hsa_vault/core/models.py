@@ -60,6 +60,9 @@ RECEIPT_COLUMNS = [
     "extraction_raw",
     "deleted",
     "edit_history",
+    # Appended, never inserted: read_tab() maps columns positionally from this
+    # list and pads short rows, so an older row simply reads back as "".
+    "extra_file_ids",
 ]
 
 REIMBURSEMENT_COLUMNS = [
@@ -183,6 +186,9 @@ class Receipt:
     extraction_raw: str = ""
     deleted: bool = False
     edit_history: str = "[]"
+    # Extra Drive files for a receipt photographed in several parts. The first
+    # page stays in drive_file_id; these are the rest, in page order.
+    extra_file_ids: list[str] = field(default_factory=list)
 
     def __post_init__(self):
         self.amount = money(self.amount)
@@ -274,6 +280,7 @@ class Receipt:
             self.extraction_raw,
             "TRUE" if self.deleted else "FALSE",
             self.edit_history,
+            ",".join(self.extra_file_ids),
         ]
 
     @classmethod
@@ -301,6 +308,9 @@ class Receipt:
             extraction_raw=row.get("extraction_raw", ""),
             deleted=parse_bool(row.get("deleted")),
             edit_history=row.get("edit_history") or "[]",
+            extra_file_ids=[
+                x.strip() for x in (row.get("extra_file_ids") or "").split(",") if x.strip()
+            ],
         )
 
     def as_dict(self) -> dict:

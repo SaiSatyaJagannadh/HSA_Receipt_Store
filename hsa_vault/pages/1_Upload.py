@@ -54,8 +54,12 @@ if not uploads:
     st.stop()
 
 
-def confirmation_form(key: str, upload, data: dict, uncertain: set[str], raw: str):
-    """Pre-filled, editable, and explicitly opt-in. Uncertain fields are marked."""
+def confirmation_form(key: str, group: list, data: dict, uncertain: set[str], raw: str):
+    """Pre-filled, editable, and explicitly opt-in. Uncertain fields are marked.
+
+    `group` is every file belonging to this one receipt — usually one, but a long
+    receipt photographed in halves is two or more.
+    """
 
     def label(text: str, field: str) -> str:
         return f"{text} ⚠️" if field in uncertain else text
@@ -147,18 +151,30 @@ def confirmation_form(key: str, upload, data: dict, uncertain: set[str], raw: st
     if receipt.amount is None:
         st.warning("Saved without an amount — it will show in the dashboard warnings panel.")
 
-    with st.spinner("Uploading original to Drive and appending to the index…"):
+    first, *rest = group
+    noun = "original" if not rest else f"all {len(group)} pages"
+    with st.spinner(f"Uploading {noun} to Drive and appending to the index…"):
         try:
-            store.commit_receipt(receipt, upload.getvalue(), upload.name)
+            store.commit_receipt(
+                receipt,
+                first.getvalue(),
+                first.name,
+                extra_pages=[(u.getvalue(), u.name) for u in rest],
+            )
         except Exception as exc:  # noqa: BLE001
             st.error(
                 f"Save failed: {exc}\n\nIf the Drive upload succeeded but the Sheet write "
                 "did not, the file will be flagged as an orphan on next launch."
             )
             return
-    store.flash(f"Saved — {receipt.provider or 'receipt'} filed under {receipt.tax_year}.")
+    store.flash(
+        f"Saved — {receipt.provider or 'receipt'} filed under {receipt.tax_year}."
+        + (f" {len(group)} pages kept together as one receipt." if rest else "")
+    )
     saved = st.session_state.setdefault(_SAVED, set())
-    saved.add(key)
+    # Every member, not just the group key, or the round never looks finished and
+    # the drop zone refuses to clear.
+    saved.update(sha256_hex(u.getvalue()) for u in group)
     # Last one in the batch: hand back an empty drop zone instead of asking the
     # user to remove the files themselves. Bumping the round is what makes the
     # widget forget. Duplicates never enter `saved`, so a batch still holding an
@@ -174,14 +190,55 @@ def confirmation_form(key: str, upload, data: dict, uncertain: set[str], raw: st
 _saved_hashes = st.session_state.get(_SAVED, set())
 pending = [u for u in uploads if sha256_hex(u.getvalue()) not in _saved_hashes]
 
-for upload in pending:
-    raw_bytes = upload.getvalue()
-    file_hash = sha256_hex(raw_bytes)
+# One paper receipt photographed in halves was previously two receipts, each with
+# half the information — and the total is usually only on the last page, so the
+# first half saved with no amount at all. The model already accepts several images
+# for one receipt ("Every image above belongs to a single receipt" is in the
+# prompt); nothing here ever handed it more than one.
+_GROUP = "_hsa_group_as_one"
+group_as_one = False
+if len(pending) > 1:
+    group_as_one = st.checkbox(
+        f"🔗 These {len(pending)} files are all pages of **one** receipt",
+        key=_GROUP,
+        help=(
+            "Tick this for a long receipt you photographed in parts, or a front and "
+            "back. They are read together as one document, saved as one record, and "
+            "every image is kept in Drive. Leave it unticked if they are separate "
+            "receipts."
+        ),
+    )
+
+groups = [pending] if group_as_one else [[u] for u in pending]
+
+
+def group_key(members: list) -> str:
+    """Stable id for a set of files. A lone file keeps its own hash, so existing
+    single-file receipts and duplicate detection are unaffected."""
+    hashes = sorted(sha256_hex(u.getvalue()) for u in members)
+    return hashes[0] if len(hashes) == 1 else sha256_hex("".join(hashes).encode())
+
+
+for group in groups:
+    raw_bytes = group[0].getvalue()
+    file_hash = group_key(group)
+    names = ", ".join(u.name for u in group)
 
     with st.container(border=True):
-        st.markdown(f"### {upload.name}")
+        st.markdown(f"### {names}")
+        if len(group) > 1:
+            st.caption(f"Read together as one receipt — {len(group)} pages.")
 
-        duplicate = ledger.is_duplicate(existing, file_hash)
+        # Each member is checked, not just the group: re-uploading either half of
+        # a pair should still be caught.
+        duplicate = next(
+            (
+                d
+                for d in (ledger.is_duplicate(existing, sha256_hex(u.getvalue())) for u in group)
+                if d
+            ),
+            None,
+        ) or ledger.is_duplicate(existing, file_hash)
         if duplicate:
             st.error("**Duplicate blocked.** This exact file is already in your index.")
             st.write(
@@ -194,18 +251,45 @@ for upload in pending:
                 st.link_button("Open the existing file in Drive", duplicate.drive_link)
             continue
 
+        # Normalized once and reused for both the preview and the model call.
+        # The preview used to push the full original to the browser on every
+        # rerun; these are EXIF-rotated and capped at 2000px.
+        pages_key = f"_hsa_pages_{file_hash}"
+        if pages_key not in st.session_state:
+            st.session_state[pages_key] = [
+                page for u in group for page in extraction.normalize(u.getvalue(), u.name)
+            ]
+        pages = st.session_state[pages_key]
+
         preview, form_area = st.columns([1, 2])
         with preview:
-            if not upload.name.lower().endswith(".pdf"):
-                st.image(raw_bytes, caption=upload.name, width="stretch")
-            else:
-                st.caption("PDF — no inline preview.")
+            shown = 0
+            for n, (_, image_bytes) in enumerate(pages, start=1):
+                # normalize() deliberately hands back undecodable bytes unchanged
+                # so the model can still judge them, and an unrasterizable PDF
+                # yields nothing at all. Neither is renderable, and neither should
+                # cost the user the page — the form below still saves.
+                try:
+                    st.image(
+                        image_bytes,
+                        caption=names if len(pages) == 1 else f"page {n} of {len(pages)}",
+                        width="stretch",
+                    )
+                    shown += 1
+                except Exception:  # noqa: BLE001
+                    pass
+            if not shown:
+                st.caption("No inline preview for this file.")
             st.caption(f"SHA-256 `{file_hash[:16]}…`")
 
         cache_key = f"_hsa_extraction_{file_hash}"
         if cache_key not in st.session_state:
-            with st.spinner("Reading the receipt…"):
-                pages = extraction.normalize(raw_bytes, upload.name)
+            spinner = (
+                "Reading the receipt…"
+                if len(pages) < 2
+                else f"Reading all {len(pages)} pages as one receipt…"
+            )
+            with st.spinner(spinner):
                 st.session_state[cache_key] = extraction.extract(
                     pages, settings.nvidia_api_key, settings.nvidia_model, settings.nvidia_base_url
                 )
@@ -229,7 +313,7 @@ for upload in pending:
             if result.uncertain_fields:
                 st.caption("⚠️ marks a field the model could not read — check those first.")
 
-            confirmation_form(file_hash, upload, result.data, result.uncertain_fields, result.raw)
+            confirmation_form(file_hash, group, result.data, result.uncertain_fields, result.raw)
 
 st.divider()
 st.caption("Not tax advice. Originals are uploaded to your Drive unmodified.")

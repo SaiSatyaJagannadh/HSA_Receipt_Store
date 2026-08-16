@@ -2,7 +2,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Tests](https://img.shields.io/badge/tests-208%20passing-3fb950)](#tests)
+[![Tests](https://img.shields.io/badge/tests-213%20passing-3fb950)](#tests)
 [![No network in tests](https://img.shields.io/badge/test%20suite-no%20network-8957e5)](#tests)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -45,6 +45,11 @@ Confirm your own eligibility with a qualified tax professional.
   vision model, returning `null` rather than guessing, and listing what was unclear.
 - **Confirm** every extraction in a form before anything is written. Nothing
   auto-commits.
+- **Group pages.** A long receipt photographed in halves, or a front and back,
+  is ticked as one receipt: the images are read together in a single model call,
+  saved as one record, and every image is kept in Drive. Saved separately, each
+  half carries only part of the information — and since the total is usually
+  printed once, on the last page, the first half would save with no amount at all.
 - **Track** two kinds of receipt separately, because confusing them causes
   double-claiming:
   - `hsa_card` — paid at the register with the HSA card. Audit documentation
@@ -347,21 +352,21 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-**208 tests, no network.** Every Google and model call is mocked, so the suite
+**213 tests, no network.** Every Google and model call is mocked, so the suite
 runs offline and deterministically.
 
 | File | Tests | Covers |
 |---|---:|---|
 | `test_ledger.py` | 34 | The balance math: HSA-card exclusion, partial reimbursements, multi-receipt withdrawals, tax-year boundaries, duplicate rejection, amount-filter bounds. |
 | `test_pages.py` | 34 | Renders all 8 pages through Streamlit's `AppTest` in four data states: empty vault, one receipt, several identical amounts, a mixed set. Also pins that an expired sign-in is not reported as a network blip. |
-| `test_extraction_parsing.py` | 25 | Mocks the OpenAI SDK entirely; tolerant reply parsing — fenced JSON, chatty preambles, invented categories, `$1,042.18` in the amount field. |
+| `test_extraction_parsing.py` | 27 | Mocks the OpenAI SDK entirely; tolerant reply parsing — fenced JSON, chatty preambles, invented categories, `$1,042.18` in the amount field. |
 | `test_models.py` | 22 | Row (de)serialization, validation, `Decimal` money quantization. |
 | `test_edit_flow.py` | 21 | Every editable field on the receipt form saves **and** confirms itself. |
 | `test_pdf_export.py` | 19 | reportlab markup injection and audit-packet contents. |
 | `test_flash_contract.py` | 18 | Static guards: the confirmation-after-rerun bug (below), and that every page reading receipts also warns when they are stale. |
 | `test_auth.py` | 14 | The fail-closed login gate, plus the Authlib and httpx dependencies `st.login()` requires. |
 | `test_archive_flow.py` | 9 | Archive → restore round trip, and that the money comes back with it. |
-| `test_upload_flow.py` | 6 | The uploader empties itself once a batch is filed, and not before. |
+| `test_upload_flow.py` | 9 | The uploader empties itself once a batch is filed, and not before; and several photos of one receipt save as a single record. |
 | `test_reimbursement_write_order.py` | 6 | A withdrawal is on record before any receipt is marked paid by it. |
 
 ### Why there is a page-rendering layer at all

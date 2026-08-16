@@ -256,11 +256,21 @@ def canonical_filename(receipt: Receipt, original_name: str) -> str:
     return f"{day}__{slugify(receipt.provider)}__{amount}__{short_hash(receipt.file_hash)}.{ext}"
 
 
-def commit_receipt(receipt: Receipt, original_bytes: bytes, original_name: str) -> Receipt:
+def commit_receipt(
+    receipt: Receipt,
+    original_bytes: bytes,
+    original_name: str,
+    extra_pages: list[tuple[bytes, str]] | None = None,
+) -> Receipt:
     """Upload original bytes to Drive, then append the index row.
 
-    If the Sheets write fails after a successful upload, the Drive file is left in
-    place and detected as an orphan on next launch (see `find_orphans`).
+    `extra_pages` are the remaining photos of a receipt shot in several parts.
+    Each is uploaded unmodified alongside the first and recorded on the same row,
+    so one paper receipt stays one record instead of becoming N of them — and so
+    a two-page receipt cannot be half-archived or half-counted.
+
+    If the Sheets write fails after a successful upload, the Drive files are left
+    in place and detected as orphans on next launch (see `find_orphans`).
     """
     _, drive = clients()
     folder = _home_folder(drive, receipt)
@@ -269,9 +279,25 @@ def commit_receipt(receipt: Receipt, original_bytes: bytes, original_name: str) 
     uploaded = drive.upload(original_bytes, filename, folder)
     receipt.drive_file_id = uploaded["id"]
     receipt.drive_link = uploaded.get("webViewLink", "")
+    # Uploaded before the row is written, same as page 1: a failure here leaves
+    # orphans that Bulk Import can adopt, never a row pointing at files that do
+    # not exist.
+    receipt.extra_file_ids = [
+        drive.upload(data, f"p{n}__{canonical_filename(receipt, name)}", folder)["id"]
+        for n, (data, name) in enumerate(extra_pages or [], start=2)
+    ]
     save_receipt(receipt)
-    audit("commit.done", receipt_id=receipt.receipt_id, drive_file_id=receipt.drive_file_id)
+    audit(
+        "commit.done",
+        receipt_id=receipt.receipt_id,
+        drive_file_id=receipt.drive_file_id,
+        extra_pages=len(receipt.extra_file_ids),
+    )
     return receipt
+
+
+def _all_file_ids(receipt: Receipt) -> list[str]:
+    return [i for i in [receipt.drive_file_id, *receipt.extra_file_ids] if i]
 
 
 def adopt_receipt(receipt: Receipt, drive_file_id: str, original_name: str) -> Receipt:
@@ -297,8 +323,10 @@ def _home_folder(drive: DriveClient, receipt: Receipt) -> str:
 def archive_receipt(receipt: Receipt, reason: str = "") -> Receipt:
     """Soft delete: flag the row and move the file to _archive. Never hard-deleted."""
     _, drive = clients()
-    if receipt.drive_file_id:
-        drive.move(receipt.drive_file_id, drive.archive_folder())
+    # Every page moves, or an archived two-page receipt leaves half its evidence
+    # sitting in the year folder.
+    for file_id in _all_file_ids(receipt):
+        drive.move(file_id, drive.archive_folder())
     receipt.deleted = True
     receipt.record_edit({"deleted": True}, note=reason or "archived")
     save_receipt(receipt)
@@ -314,8 +342,8 @@ def restore_receipt(receipt: Receipt, reason: str = "") -> Receipt:
     was effectively permanent from inside the app.
     """
     _, drive = clients()
-    if receipt.drive_file_id:
-        drive.move(receipt.drive_file_id, _home_folder(drive, receipt))
+    for file_id in _all_file_ids(receipt):
+        drive.move(file_id, _home_folder(drive, receipt))
     receipt.deleted = False
     receipt.record_edit({"deleted": False}, note=reason or "restored")
     save_receipt(receipt)
@@ -329,7 +357,9 @@ def restore_receipt(receipt: Receipt, reason: str = "") -> Receipt:
 def find_orphans() -> list[dict]:
     """Drive files with no matching row in the Sheet — i.e. a half-finished save."""
     _, drive = clients()
-    indexed = {r.drive_file_id for r in receipts() if r.drive_file_id}
+    # Extra pages are indexed too — otherwise page 2 of every multi-page
+    # receipt is reported as an orphan on every launch, forever.
+    indexed = {i for r in receipts() for i in _all_file_ids(r)}
     return [f for f in drive.list_all_receipt_files() if f["id"] not in indexed]
 
 

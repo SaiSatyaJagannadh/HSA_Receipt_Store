@@ -11,7 +11,7 @@ All commands run from `hsa_vault/`, not the repo root. The venv lives at the rep
 ```sh
 cd hsa_vault
 ../.venv/bin/streamlit run app.py                  # run the app
-../.venv/bin/python -m pytest tests -q             # full suite (208, no network)
+../.venv/bin/python -m pytest tests -q             # full suite (213, no network)
 ../.venv/bin/python -m pytest tests/test_ledger.py -q          # one file
 ../.venv/bin/python -m pytest tests/test_edit_flow.py -q -k provider   # one test
 ../.venv/bin/python -m scripts.bootstrap_sheet --create        # create the Sheet, grant consent
@@ -33,6 +33,10 @@ There is no linter or formatter configured. Match the surrounding style.
 **`ledger.py` is pure functions over lists of receipts.** All balance math lives here and nowhere else. The claimable-balance rule (README → "The balance rule") is what `tests/test_ledger.py` exists to protect — treat a change there as changing the product, not refactoring it.
 
 **`models.py` owns the wire format.** `RECEIPT_COLUMNS`, `TABS`, `CATEGORIES`, and `PAYMENT_METHODS` are the single source of truth for the Sheet's shape; `to_row`/`from_row` are the only serialization boundary. Adding a column means updating `RECEIPT_COLUMNS` and both methods together — the Sheet has to stay self-describing.
+
+New columns go on the **end**, never inserted. `read_tab` maps values positionally from `RECEIPT_COLUMNS` and pads short rows, so an existing row simply reads back `""` for a column added later and no migration is needed. The Sheet's own header row is cosmetic — nothing reads it — but it is what a human sees, so run `python -m scripts.bootstrap_sheet` once after adding a column to rewrite the headers. `extra_file_ids` (the extra pages of a receipt photographed in parts) was added this way.
+
+**A receipt can own more than one Drive file.** `drive_file_id` is page one; `extra_file_ids` is the rest. Anything that touches a receipt's files must use `store._all_file_ids`, not `drive_file_id` alone — `archive_receipt` and `restore_receipt` would otherwise strand half the pages in the wrong folder, and `find_orphans` would report page two as unindexed on every launch, forever.
 
 ### Two payment methods, one balance
 
@@ -57,6 +61,8 @@ All keys are namespaced `_hsa_*`. This is not cosmetic: a bare `st.session_state
 Provider names come from a vision model reading a stranger's printout, and the Sheet is hand-editable. Three sinks are already defended and must stay that way: `pdf_export.safe()` escapes before reportlab's mini-XML `Paragraph` parser (`<img src="/etc/passwd"/>` in a provider name would otherwise embed a local file), Sheets writes use `valueInputOption="RAW"` so `=IMPORTXML(...)` stays text, and `models.safe_url()` drops any `drive_link` that isn't http(s).
 
 ### Failure handling
+
+**Retry budgets multiply, they do not add.** The openai SDK defaults to a 600s timeout *and* its own `max_retries=2`; wrapped in `retry()`, one extraction became up to twelve requests of up to ten minutes each, which presented as the Upload page hanging on "Reading the receipt…" — measured at over six minutes for a single 150KB image. `extraction.extract` now passes `timeout=REQUEST_TIMEOUT, max_retries=0` so `retry()` alone owns retries, and the worst case is `ATTEMPTS × REQUEST_TIMEOUT`. Any client wrapped in `retry()` must disable that client's own retries; `tests/test_extraction_parsing.py` pins both.
 
 `util.retry()` wraps every Google and NVIDIA network call with exponential backoff and jitter. Extraction never raises — no API key, a rate limit, or a model replying with prose all degrade to manual entry, and the app never blocks a save. If a Drive upload succeeds and the Sheets write fails, the file becomes an orphan, detected on next launch and repairable from Bulk Import. Nothing is ever hard-deleted; archiving flags the row and moves the file to `_archive/`, and `store.restore_receipt` is the exact inverse — it must keep putting the file back in the same folder `commit_receipt` would have chosen, which is why both go through `_home_folder`.
 

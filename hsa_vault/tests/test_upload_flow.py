@@ -46,7 +46,12 @@ def page(monkeypatch):
     monkeypatch.setattr(config, "load_settings", lambda: settings)
     monkeypatch.setattr(store, "receipts", lambda refresh=False: [])
     monkeypatch.setattr(store, "clients", lambda: (None, None))
-    monkeypatch.setattr(store, "commit_receipt", lambda r, b, n: committed.append(r) or r)
+
+    def fake_commit(receipt, data, name, extra_pages=None):
+        committed.append((receipt, [n for _, n in (extra_pages or [])]))
+        return receipt
+
+    monkeypatch.setattr(store, "commit_receipt", fake_commit)
     monkeypatch.setattr(extraction, "normalize", lambda data, name: [("image/png", b"x")])
     monkeypatch.setattr(
         extraction,
@@ -156,3 +161,68 @@ def test_a_duplicate_keeps_its_card(monkeypatch, page):
     add(at, FILE_A)
     assert uploaded_names(at) == ["receipt_a.pdf"], "the duplicate was silently discarded"
     assert any("Duplicate blocked" in e.value for e in at.error)
+
+
+def group_checkbox(at):
+    return next((c for c in at.checkbox if "one" in c.label and "receipt" in c.label), None)
+
+
+def test_two_files_can_be_saved_as_a_single_receipt(page):
+    """A long receipt photographed in halves is one receipt, not two.
+
+    Saved as two, each half carries only part of the information — and the total
+    is normally printed once, on the last page, so the first half saves with no
+    amount at all and the balance is wrong in the safe-looking direction.
+    """
+    at, committed = page
+    add(at, FILE_A, FILE_B)
+
+    box = group_checkbox(at)
+    assert box is not None, "no way to say two photos are one receipt"
+    box.check()
+    at.run()
+    assert not at.exception
+
+    save_first(at)
+
+    assert len(committed) == 1, f"expected one receipt, got {len(committed)}"
+    receipt, extra_names = committed[0]
+    assert extra_names == ["receipt_b.pdf"], (
+        f"the second page was not uploaded with the receipt: {extra_names}"
+    )
+    assert receipt.provider == "Test Clinic"
+
+
+def test_ungrouped_files_still_save_as_separate_receipts(page):
+    """The default must not change: two unrelated receipts stay two receipts."""
+    at, committed = page
+    add(at, FILE_A, FILE_B)
+
+    save_first(at)
+
+    assert len(committed) == 1
+    assert committed[0][1] == [], "an unticked batch bundled files into one receipt"
+
+
+def test_grouping_reads_every_page_in_one_model_call(page, monkeypatch):
+    """Both images must reach the model together, or it cannot see the total.
+
+    extract() has always accepted several images and its prompt already says they
+    are one receipt; the page just never passed more than one.
+    """
+    seen: list[int] = []
+    monkeypatch.setattr(
+        extraction,
+        "extract",
+        lambda pages, *a, **k: seen.append(len(pages))
+        or extraction.Extraction(data={"provider": "Test Clinic"}, raw="{}"),
+    )
+    at, _ = page
+    add(at, FILE_A, FILE_B)
+    box = group_checkbox(at)
+    box.check()
+    at.run()
+
+    assert seen and max(seen) == 2, (
+        f"the model was called with {seen} page(s) — a grouped receipt must send all of them"
+    )

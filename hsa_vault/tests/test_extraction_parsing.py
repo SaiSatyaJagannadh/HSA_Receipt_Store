@@ -46,8 +46,8 @@ def fake_openai(monkeypatch):
             return state["response"]
 
     class FakeClient:
-        def __init__(self, api_key=None, base_url=None):
-            state["init"].append({"api_key": api_key, "base_url": base_url})
+        def __init__(self, api_key=None, base_url=None, **kwargs):
+            state["init"].append({"api_key": api_key, "base_url": base_url, **kwargs})
             self.chat = types.SimpleNamespace(completions=FakeCompletions())
 
     module = types.ModuleType("openai")
@@ -278,3 +278,39 @@ def test_normalizing_never_touches_the_caller_bytes():
 def test_unreadable_file_still_produces_a_block():
     pages = extraction.normalize(b"not an image at all", "weird.jpg")
     assert len(pages) == 1
+
+
+def test_the_model_call_is_bounded_in_time_and_attempts(fake_openai):
+    """An unbounded extraction call is a hang, not a slow feature.
+
+    The openai SDK defaults to a 600s timeout and its own max_retries=2. Combined
+    with the retry decorator that wraps _call, one upload could cost a dozen
+    requests of up to ten minutes each — measured at over six minutes on a single
+    150KB image before being killed by hand. Extraction is optional (manual entry
+    always works), so it must fail fast rather than park a spinner.
+    """
+    fake_openai["response"] = FakeResponse(GOOD_PAYLOAD)
+
+    extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
+
+    init = fake_openai["init"][0]
+    assert init.get("timeout"), "no per-request timeout: the SDK default is 600s"
+    assert init["timeout"] <= 120, "a timeout this long is indistinguishable from a hang"
+    assert init.get("max_retries") == 0, (
+        "the SDK's own retries multiply with retry(), they do not replace it"
+    )
+
+
+def test_a_hanging_endpoint_gives_up_instead_of_retrying_forever(fake_openai):
+    """Worst case must stay bounded: attempts x timeout, not attempts x 600s."""
+    fake_openai["raise"] = TimeoutError("request timed out")
+
+    result = extraction.extract([("image/jpeg", b"x")], "nvapi-x", MODEL)
+
+    assert result.error, "a timeout must surface, not raise"
+    assert len(fake_openai["calls"]) == extraction.ATTEMPTS, (
+        f"expected {extraction.ATTEMPTS} attempts, got {len(fake_openai['calls'])}"
+    )
+    assert extraction.ATTEMPTS * extraction.REQUEST_TIMEOUT <= 180, (
+        "worst-case wait before manual entry is longer than anyone will sit through"
+    )
