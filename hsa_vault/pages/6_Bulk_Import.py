@@ -73,9 +73,16 @@ with tab_scan:
     )
     folder_id = ""
     if source == "A Drive folder ID":
+        # Pre-filled from Settings so a phone-capture routine does not mean
+        # pasting a 33-character folder ID every single time.
         folder_id = st.text_input(
             "Folder ID (from the folder's URL)",
-            help="The loose folder holding your backlog. It does not need to be inside HSA_Vault.",
+            value=settings.inbox_folder_id,
+            help=(
+                "The loose folder holding your backlog, or the inbox your phone drops "
+                "photos into. It does not need to be inside HSA_Vault. Set a default "
+                "on the Settings page."
+            ),
         ).strip()
 
     limit = st.number_input("Process at most", 1, 200, 25, help="Keeps API cost predictable.")

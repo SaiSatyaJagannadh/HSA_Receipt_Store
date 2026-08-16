@@ -30,6 +30,15 @@ with st.form("settings"):
     c1, c2 = st.columns(2)
     drive_folder_id = c1.text_input("Drive folder ID", value=settings.drive_folder_id)
     sheet_id = c2.text_input("Sheet ID", value=settings.sheet_id)
+    inbox_folder_id = st.text_input(
+        "Phone inbox folder ID (optional)",
+        value=settings.inbox_folder_id,
+        help=(
+            "A Drive folder your phone drops receipt photos into. Bulk Import "
+            "pre-fills its scan with this, so the ID is typed once rather than "
+            "every time. Nothing is ever written here."
+        ),
+    )
 
     st.subheader("NVIDIA (receipt extraction)")
     c3, c4 = st.columns(2)
@@ -72,6 +81,7 @@ with st.form("settings"):
                 google_credentials_json=google_credentials_json.strip(),
                 drive_folder_id=drive_folder_id.strip(),
                 sheet_id=sheet_id.strip(),
+                inbox_folder_id=inbox_folder_id.strip(),
                 nvidia_api_key=nvidia_api_key.strip(),
                 nvidia_model=nvidia_model.strip(),
                 default_payment_method=default_payment_method,

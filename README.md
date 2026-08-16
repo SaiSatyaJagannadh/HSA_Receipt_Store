@@ -2,7 +2,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Tests](https://img.shields.io/badge/tests-224%20passing-3fb950)](#tests)
+[![Tests](https://img.shields.io/badge/tests-226%20passing-3fb950)](#tests)
 [![No network in tests](https://img.shields.io/badge/test%20suite-no%20network-8957e5)](#tests)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -73,6 +73,30 @@ Confirm your own eligibility with a qualified tax professional.
 - **Repair** itself: rebuild the local cache from Sheets, and detect Drive files
   that have no index row (a Drive upload that succeeded when the Sheets write
   failed).
+
+---
+
+## Capturing from a phone
+
+There is no iOS app, and there does not need to be one. Drive holds the files
+and Sheets holds the index, so anything that can put a photo in a Drive folder
+is a capture client — including the iOS Shortcuts app.
+
+1. In Drive, use the `_inbox` folder inside `HSA_Vault` (the app creates it), or
+   any folder you like. Copy its ID from the URL and paste it into
+   **Settings → Phone inbox folder ID**.
+2. On the iPhone, build a Shortcut: **Take Photo** → **Save File** → pick that
+   Drive folder, with *Ask Where To Save* off. Name it "HSA receipt" and add it
+   to the Home Screen or the Action Button.
+3. Later, open **Bulk Import → Scan a folder**. The folder ID is pre-filled.
+   Scan, review the extractions, and save.
+
+Adopted files are renamed canonically and moved into their year folder — the
+bytes are never re-uploaded, so the photo your phone took is the file that is
+kept. The inbox empties itself as you work the queue.
+
+The `_` prefix matters: `find_orphans` skips underscore folders, so photos
+waiting to be filed are never reported as half-failed saves.
 
 ---
 
@@ -367,7 +391,7 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-**224 tests, no network.** Every Google and model call is mocked, so the suite
+**226 tests, no network.** Every Google and model call is mocked, so the suite
 runs offline and deterministically.
 
 | File | Tests | Covers |

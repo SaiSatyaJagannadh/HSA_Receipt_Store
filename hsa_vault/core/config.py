@@ -43,6 +43,9 @@ class Settings:
     google_credentials_json: str = ""
     drive_folder_id: str = ""
     sheet_id: str = ""
+    # Where a phone drops receipt photos. Bulk Import scans it; nothing writes
+    # here, so it can live anywhere in Drive.
+    inbox_folder_id: str = ""
     nvidia_api_key: str = ""
     nvidia_model: str = "meta/llama-3.2-90b-vision-instruct"
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
@@ -78,6 +81,7 @@ _ENV_MAP = {
     "google_credentials_json": "GOOGLE_CREDENTIALS_JSON",
     "drive_folder_id": "HSA_DRIVE_FOLDER_ID",
     "sheet_id": "HSA_SHEET_ID",
+    "inbox_folder_id": "HSA_INBOX_FOLDER_ID",
     "nvidia_api_key": "NVIDIA_API_KEY",
     "nvidia_model": "NVIDIA_MODEL",
     "nvidia_base_url": "NVIDIA_BASE_URL",

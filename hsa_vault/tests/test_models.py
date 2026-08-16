@@ -189,3 +189,29 @@ def test_drive_link_only_accepts_http_urls():
     assert safe_url("file:///etc/passwd") == ""
     assert safe_url(None) == ""
     assert Receipt.from_row({"file_hash": "h", "drive_link": "javascript:alert(1)"}).drive_link == ""
+
+
+def test_the_phone_inbox_folder_survives_a_settings_round_trip(tmp_path, monkeypatch):
+    """Bulk Import pre-fills its scan from this, so a phone-capture routine does
+    not require pasting a 33-character Drive folder ID every week."""
+    from core import config
+
+    path = tmp_path / "settings.json"
+    monkeypatch.setattr(config, "SETTINGS_PATH", path)
+    monkeypatch.delenv("HSA_INBOX_FOLDER_ID", raising=False)
+
+    config.save_settings(config.Settings(inbox_folder_id="folder-abc", sheet_id="s"))
+    assert config.load_settings().inbox_folder_id == "folder-abc"
+
+
+def test_the_inbox_folder_is_optional(tmp_path, monkeypatch):
+    """It must never become a precondition for using the app."""
+    from core import config
+
+    monkeypatch.setattr(config, "SETTINGS_PATH", tmp_path / "none.json")
+    monkeypatch.delenv("HSA_INBOX_FOLDER_ID", raising=False)
+    settings = config.Settings(
+        google_credentials_json=__file__, drive_folder_id="d", sheet_id="s"
+    )
+    assert settings.inbox_folder_id == ""
+    assert settings.ready() == [], "a missing inbox folder blocked Google access"
