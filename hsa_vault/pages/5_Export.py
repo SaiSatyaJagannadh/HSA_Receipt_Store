@@ -3,6 +3,7 @@
 from datetime import date
 from decimal import Decimal
 
+import pandas as pd
 import streamlit as st
 
 from core import auth, ledger, pdf_export, store
@@ -45,9 +46,38 @@ st.caption(
 
 st.divider()
 
-missing_images = [r for r in year_receipts if not r.drive_file_id]
-if missing_images:
-    st.warning(f"{len(missing_images)} receipt(s) have no Drive file — those pages show metadata only.")
+# Checked before the button, not during the build. A packet is usually generated
+# years after the receipts were filed, long past the point where a missing amount
+# can still be remembered — so "your packet has holes" has to arrive while there
+# is still something to be done about it.
+gaps = ledger.packet_gaps(receipts, tax_year)
+if gaps:
+    st.warning(
+        f"**{len(gaps)} of {len(year_receipts)} receipt(s) would go into this packet "
+        "incomplete.** Fix them in **Receipts** first — an audit packet is only worth "
+        "what its weakest page proves."
+    )
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "Date": g["receipt"].service_date,
+                    "Provider": g["receipt"].provider or "—",
+                    "Amount": float(g["receipt"].amount) if g["receipt"].amount is not None else None,
+                    "Missing": ", ".join(g["missing"]),
+                }
+                for g in gaps
+            ]
+        ),
+        hide_index=True,
+        width="stretch",
+        column_config={"Amount": st.column_config.NumberColumn(format="$%.2f")},
+    )
+else:
+    st.success(
+        f"All {len(year_receipts)} receipt(s) have an image, an amount and a date. "
+        "The packet will be complete."
+    )
 
 if st.button("📄 Generate audit packet", type="primary"):
     _, drive = store.clients()

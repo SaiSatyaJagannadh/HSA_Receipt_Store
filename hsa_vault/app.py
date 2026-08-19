@@ -182,6 +182,44 @@ if require_setup():
 
     st.divider()
 
+    # --- possible double-counting ------------------------------------------
+    # Ahead of the general warnings, because this is the one that costs money
+    # rather than tidiness: two records of one expense inflate the claimable
+    # balance and leave a claim with no second receipt behind it at audit.
+    dupes = ledger.likely_duplicates(receipts)
+    if dupes:
+        st.subheader("Possible duplicates")
+        st.warning(
+            f"{len(dupes)} set(s) of receipts share a date and an amount. If a receipt "
+            "was photographed twice, archive one — otherwise the balance counts the "
+            "same expense more than once."
+        )
+        for group in dupes:
+            first = group[0]
+            label = f"{first.service_date} — ${first.amount:,.2f} × {len(group)} receipts"
+            with st.expander(label):
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "Provider": r.provider or "—",
+                                "Category": r.category,
+                                "Payment": PAYMENT_LABELS.get(r.payment_method, ""),
+                                "Uploaded": r.upload_date,
+                                "Drive": r.drive_link,
+                            }
+                            for r in group
+                        ]
+                    ),
+                    hide_index=True,
+                    width="stretch",
+                    column_config={
+                        "Drive": st.column_config.LinkColumn("Drive", display_text="open")
+                    },
+                )
+        st.caption("Open **Receipts** to archive whichever is the copy.")
+        st.divider()
+
     # --- warnings ----------------------------------------------------------
     st.subheader("Needs attention")
     issues = ledger.warnings(receipts, date.today())

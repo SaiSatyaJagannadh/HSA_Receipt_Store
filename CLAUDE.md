@@ -11,7 +11,7 @@ All commands run from `hsa_vault/`, not the repo root. The venv lives at the rep
 ```sh
 cd hsa_vault
 ../.venv/bin/streamlit run app.py                  # run the app
-../.venv/bin/python -m pytest tests -q             # full suite (228, no network)
+../.venv/bin/python -m pytest tests -q             # full suite (234, no network)
 ../.venv/bin/python -m pytest tests/test_ledger.py -q          # one file
 ../.venv/bin/python -m pytest tests/test_edit_flow.py -q -k provider   # one test
 ../.venv/bin/python -m scripts.bootstrap_sheet --create        # create the Sheet, grant consent

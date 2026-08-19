@@ -324,3 +324,76 @@ def test_amount_bounds_ignores_receipts_with_no_amount():
     receipts = [receipt(amount=None), receipt(amount=Decimal("42.00"))]
     low, high = ledger.amount_bounds(receipts)
     assert low == 42.0 and high > low
+
+
+# --- the duplicate that content hashing cannot see -------------------------
+
+
+def test_the_same_receipt_photographed_twice_is_flagged():
+    """Content hashing only catches the identical file.
+
+    Photograph one receipt twice — different light, different crop — and you get
+    two records of one expense. The balance then counts it twice, and at audit
+    the second claim has no second receipt behind it.
+    """
+    a = Receipt(file_hash="a" * 64, service_date=date(2026, 3, 1), amount=Decimal("42.18"))
+    b = Receipt(file_hash="b" * 64, service_date=date(2026, 3, 1), amount=Decimal("42.18"))
+
+    assert ledger.is_duplicate([a], b.file_hash) is None, "different bytes, as expected"
+    groups = ledger.likely_duplicates([a, b])
+    assert len(groups) == 1 and len(groups[0]) == 2
+
+
+def test_different_days_or_amounts_are_not_duplicates():
+    """A false positive sends someone hunting a problem that does not exist."""
+    same_day = Receipt(file_hash="a" * 64, service_date=date(2026, 3, 1), amount=Decimal("10.00"))
+    other_amount = Receipt(
+        file_hash="b" * 64, service_date=date(2026, 3, 1), amount=Decimal("10.01"))
+    other_day = Receipt(
+        file_hash="c" * 64, service_date=date(2026, 3, 2), amount=Decimal("10.00"))
+
+    assert ledger.likely_duplicates([same_day, other_amount, other_day]) == []
+
+
+def test_archived_receipts_are_not_counted_as_duplicates():
+    """Archiving one of a pair is the fix; it must not keep reporting itself."""
+    a = Receipt(file_hash="a" * 64, service_date=date(2026, 3, 1), amount=Decimal("42.18"))
+    b = Receipt(
+        file_hash="b" * 64, service_date=date(2026, 3, 1), amount=Decimal("42.18"), deleted=True)
+
+    assert ledger.likely_duplicates([a, b]) == []
+
+
+def test_incomplete_receipts_are_not_guessed_at():
+    """Two receipts with no date and no amount are not evidence of anything."""
+    a = Receipt(file_hash="a" * 64)
+    b = Receipt(file_hash="b" * 64)
+    assert ledger.likely_duplicates([a, b]) == []
+
+
+# --- packet readiness ------------------------------------------------------
+
+
+def test_packet_gaps_name_what_is_missing():
+    """A packet is built years later, long past remembering a missing amount."""
+    good = Receipt(
+        file_hash="a" * 64, drive_file_id="f1", service_date=date(2026, 3, 1),
+        amount=Decimal("10.00"), tax_year=2026)
+    no_image = Receipt(
+        file_hash="b" * 64, service_date=date(2026, 3, 1), amount=Decimal("10.00"),
+        tax_year=2026)
+    no_amount = Receipt(
+        file_hash="c" * 64, drive_file_id="f3", service_date=date(2026, 3, 1), tax_year=2026)
+
+    gaps = ledger.packet_gaps([good, no_image, no_amount], 2026)
+
+    assert len(gaps) == 2, "a complete receipt was reported as a gap"
+    problems = {g["receipt"].file_hash[0]: g["missing"] for g in gaps}
+    assert problems["b"] == ["no image"]
+    assert problems["c"] == ["no amount"]
+
+
+def test_packet_gaps_ignore_other_years_and_archived():
+    other_year = Receipt(file_hash="a" * 64, tax_year=2025)
+    archived = Receipt(file_hash="b" * 64, tax_year=2026, deleted=True)
+    assert ledger.packet_gaps([other_year, archived], 2026) == []

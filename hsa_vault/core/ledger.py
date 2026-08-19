@@ -173,3 +173,50 @@ def amount_bounds(receipts: list[Receipt]) -> tuple[float, float]:
     if high <= low:
         high = low + 1.0
     return low, high
+
+
+def likely_duplicates(receipts: list[Receipt]) -> list[list[Receipt]]:
+    """Receipts that look like the same expense filed twice.
+
+    Content hashing only catches the identical file. Photograph one receipt
+    twice — different light, different crop — and you get two records of one
+    expense, which inflates the claimable balance and, at audit, is a claim with
+    no second receipt behind it. That is the same class of error as confusing
+    hsa_card with out_of_pocket, arrived at from the other direction.
+
+    Matched on service date *and* amount together, which is deliberately strict:
+    a false positive here sends someone hunting for a problem that does not
+    exist, and two genuinely separate expenses on one day for one amount are
+    rare. Provider is not compared — extraction reads it inconsistently
+    ("Amazon" vs "Amazon.com"), so it would split real duplicates apart.
+    """
+    groups: dict[tuple[date, Decimal], list[Receipt]] = defaultdict(list)
+    for r in active(receipts):
+        if r.service_date is None or r.amount is None:
+            continue
+        groups[(r.service_date, r.amount)].append(r)
+    return [sorted(g, key=lambda r: r.receipt_id) for g in groups.values() if len(g) > 1]
+
+
+def packet_gaps(receipts: list[Receipt], tax_year: int) -> list[dict]:
+    """What would make this year's audit packet indefensible, before it is built.
+
+    A packet is the artifact the whole app exists to produce, and it is usually
+    generated years after the receipts were filed — long past the point where a
+    missing amount can be remembered. Checking at build time is far too late to
+    be useful, so this reports before the button is pressed.
+    """
+    out = []
+    for r in active(receipts):
+        if r.tax_year != tax_year:
+            continue
+        missing = []
+        if not r.drive_file_id:
+            missing.append("no image")
+        if r.amount is None:
+            missing.append("no amount")
+        if r.service_date is None:
+            missing.append("no service date")
+        if missing:
+            out.append({"receipt": r, "missing": missing})
+    return out

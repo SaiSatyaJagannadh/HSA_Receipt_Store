@@ -2,7 +2,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Tests](https://img.shields.io/badge/tests-228%20passing-3fb950)](#tests)
+[![Tests](https://img.shields.io/badge/tests-234%20passing-3fb950)](#tests)
 [![No network in tests](https://img.shields.io/badge/test%20suite-no%20network-8957e5)](#tests)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -70,6 +70,15 @@ Confirm your own eligibility with a qualified tax professional.
   table, category subtotals, and one page per receipt with the image and its
   metadata printed beneath it. Legible in black and white. Plus CSV and a ZIP of
   the raw images.
+- **Catch the duplicate a hash cannot see.** Content hashing only matches the
+  identical file; a receipt photographed twice becomes two records of one
+  expense, inflating the balance and leaving the second claim with no receipt
+  behind it. Receipts sharing a service date *and* an amount are flagged on the
+  dashboard.
+- **Check the packet before building it.** An audit packet is usually generated
+  years after the receipts were filed, long past remembering a missing amount.
+  Export reports which receipts would go in incomplete — no image, no amount, no
+  date — while there is still something to be done about it.
 - **Repair** itself: rebuild the local cache from Sheets, and detect Drive files
   that have no index row (a Drive upload that succeeded when the Sheets write
   failed).
@@ -391,7 +400,7 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-**228 tests, no network.** Every Google and model call is mocked, so the suite
+**234 tests, no network.** Every Google and model call is mocked, so the suite
 runs offline and deterministically.
 
 | File | Tests | Covers |
