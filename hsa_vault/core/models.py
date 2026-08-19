@@ -378,3 +378,67 @@ class Contribution:
             source=row.get("source", "payroll"),
             tax_year=int(tax_year) if str(tax_year or "").strip().isdigit() else None,
         )
+
+
+# --- edit history, in English ----------------------------------------------
+
+# Raw JSON belongs in a diagnostics pane, not under the form someone is editing.
+# These map the stored field names and values onto what the form itself calls
+# them, so a history entry reads like a sentence instead of a payload.
+_EDIT_FIELD_LABELS = {
+    "provider": "Provider",
+    "service_date": "Service date",
+    "amount": "Amount",
+    "category": "Category",
+    "description": "Description",
+    "payment_method": "Payment method",
+    "patient": "Patient",
+    "eligibility_confidence": "Eligibility confidence",
+    "notes": "Notes",
+    "tax_year": "Tax year",
+    "deleted": "Archived",
+    "reimbursed": "Reimbursed",
+    "reimbursement_amount": "Reimbursed amount",
+    "reimbursement_date": "Reimbursement date",
+    "extra_file_ids": "Pages attached",
+}
+
+
+def edit_field_label(field: str) -> str:
+    return _EDIT_FIELD_LABELS.get(field, field.replace("_", " ").capitalize())
+
+
+def edit_value_label(field: str, value) -> str:
+    """Render a stored change value the way the form would show it.
+
+    record_edit() stringifies everything for JSON safety, so booleans arrive as
+    "True"/"False" and payment methods as their wire values — neither of which is
+    what the user clicked on.
+    """
+    text = str(value)
+    if field == "payment_method":
+        return PAYMENT_LABELS.get(text, text)
+    if text in ("True", "False"):
+        return "yes" if text == "True" else "no"
+    return text or "(cleared)"
+
+
+def describe_edit(entry: dict) -> tuple[str, str]:
+    """One history entry as (when, what) plain text.
+
+    `when` degrades to the raw timestamp rather than raising: the Sheet is
+    hand-editable, so anything at all can end up in that field.
+    """
+    raw = str(entry.get("ts", ""))
+    try:
+        when = datetime.fromisoformat(raw).astimezone().strftime("%d %b %Y, %H:%M")
+    except Exception:  # noqa: BLE001
+        when = raw or "unknown time"
+
+    changes = entry.get("changes") or {}
+    parts = [f"{edit_field_label(k)} → {edit_value_label(k, v)}" for k, v in sorted(changes.items())]
+    note = str(entry.get("note") or "").strip()
+    what = ", ".join(parts) if parts else (note or "no fields recorded")
+    if parts and note:
+        what = f"{what}  ({note})"
+    return when, what

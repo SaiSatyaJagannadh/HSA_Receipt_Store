@@ -12,6 +12,7 @@ from core.models import (
     NARROW_ELIGIBILITY,
     PAYMENT_LABELS,
     PAYMENT_METHODS,
+    describe_edit,
     money,
 )
 
@@ -343,16 +344,25 @@ with edit_col:
             store.flash(f"Updated {len(changes)} field(s): {', '.join(sorted(changes))}.")
             st.rerun()
 
+# Out of the editing area on purpose. This is a record of what happened, not
+# something you act on while filling in the form above, and it used to sit
+# directly under it as raw JSON blobs.
+st.divider()
 history = receipt.history()
-history_tab, raw_tab = st.tabs([f"Edit history ({len(history)})", "Raw extraction output"])
-with history_tab:
-    if not history:
-        st.caption("No edits recorded since this receipt was saved.")
-    for entry in reversed(history):
-        st.write(f"**{entry['ts']}** — {entry.get('note', '')}")
-        st.json(entry.get("changes", {}), expanded=False)
-with raw_tab:
-    st.code(receipt.extraction_raw or "(none)", language="json")
+with st.expander(f"📜 History and diagnostics ({len(history)} edit(s))"):
+    history_tab, raw_tab = st.tabs(["What changed", "Raw extraction output"])
+    with history_tab:
+        if not history:
+            st.caption("No edits recorded since this receipt was saved.")
+        for entry in reversed(history):
+            when, what = describe_edit(entry)
+            st.markdown(f"**{when}** — {what}")
+    with raw_tab:
+        st.caption(
+            "Exactly what the vision model returned, kept verbatim so a bad "
+            "extraction can be diagnosed rather than guessed at."
+        )
+        st.code(receipt.extraction_raw or "(none)", language="json")
 
 st.divider()
 st.caption("Not tax advice. Archiving never deletes anything from Drive.")

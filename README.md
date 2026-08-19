@@ -2,7 +2,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Tests](https://img.shields.io/badge/tests-226%20passing-3fb950)](#tests)
+[![Tests](https://img.shields.io/badge/tests-228%20passing-3fb950)](#tests)
 [![No network in tests](https://img.shields.io/badge/test%20suite-no%20network-8957e5)](#tests)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -391,7 +391,7 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-**226 tests, no network.** Every Google and model call is mocked, so the suite
+**228 tests, no network.** Every Google and model call is mocked, so the suite
 runs offline and deterministically.
 
 | File | Tests | Covers |

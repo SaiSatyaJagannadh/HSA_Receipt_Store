@@ -215,3 +215,36 @@ def test_the_inbox_folder_is_optional(tmp_path, monkeypatch):
     )
     assert settings.inbox_folder_id == ""
     assert settings.ready() == [], "a missing inbox folder blocked Google access"
+
+
+def test_edit_history_reads_as_english_not_json():
+    """Raw JSON under the edit form is noise at the moment of editing.
+
+    record_edit() stringifies everything for JSON safety, so booleans arrive as
+    "True"/"False" and payment methods as their wire values — neither is what
+    the user clicked.
+    """
+    from core.models import describe_edit
+
+    when, what = describe_edit(
+        {
+            "ts": "2026-08-16T23:01:00+00:00",
+            "changes": {"payment_method": "hsa_card", "deleted": "False", "amount": "27.40"},
+            "note": "manual edit",
+        }
+    )
+
+    assert "T" not in when and "+00:00" not in when, f"raw ISO timestamp shown: {when}"
+    assert "HSA card" in what, "the wire value was shown instead of the form's label"
+    assert "Archived → no" in what, '"False" was shown instead of a readable value'
+    assert "Amount → 27.40" in what
+    assert "manual edit" in what
+
+
+def test_a_hand_broken_timestamp_does_not_crash_the_history():
+    """The Sheet is hand-editable, so anything can end up in that column."""
+    from core.models import describe_edit
+
+    when, what = describe_edit({"ts": "not a date", "changes": {}, "note": "restored"})
+    assert when == "not a date"
+    assert what == "restored"
