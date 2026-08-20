@@ -48,6 +48,10 @@ class Settings:
     inbox_folder_id: str = ""
     nvidia_api_key: str = ""
     nvidia_model: str = "meta/llama-3.2-90b-vision-instruct"
+    # Text-only, for the Ask page. Separate from nvidia_model because the vision
+    # models used for extraction are slow and often unavailable on the free tier,
+    # and a chat nobody waits for is a chat nobody uses.
+    nvidia_chat_model: str = "meta/llama-3.1-8b-instruct"
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     default_payment_method: str = "out_of_pocket"
     default_patient: str = "self"
@@ -84,6 +88,7 @@ _ENV_MAP = {
     "inbox_folder_id": "HSA_INBOX_FOLDER_ID",
     "nvidia_api_key": "NVIDIA_API_KEY",
     "nvidia_model": "NVIDIA_MODEL",
+    "nvidia_chat_model": "NVIDIA_CHAT_MODEL",
     "nvidia_base_url": "NVIDIA_BASE_URL",
     "default_payment_method": "HSA_DEFAULT_PAYMENT_METHOD",
     "default_patient": "HSA_DEFAULT_PATIENT",

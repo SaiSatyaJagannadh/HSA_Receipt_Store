@@ -11,7 +11,7 @@ All commands run from `hsa_vault/`, not the repo root. The venv lives at the rep
 ```sh
 cd hsa_vault
 ../.venv/bin/streamlit run app.py                  # run the app
-../.venv/bin/python -m pytest tests -q             # full suite (234, no network)
+../.venv/bin/python -m pytest tests -q             # full suite (248, no network)
 ../.venv/bin/python -m pytest tests/test_ledger.py -q          # one file
 ../.venv/bin/python -m pytest tests/test_edit_flow.py -q -k provider   # one test
 ../.venv/bin/python -m scripts.bootstrap_sheet --create        # create the Sheet, grant consent
@@ -60,7 +60,7 @@ All keys are namespaced `_hsa_*`. This is not cosmetic: a bare `st.session_state
 
 ### Untrusted text
 
-Provider names come from a vision model reading a stranger's printout, and the Sheet is hand-editable. Three sinks are already defended and must stay that way: `pdf_export.safe()` escapes before reportlab's mini-XML `Paragraph` parser (`<img src="/etc/passwd"/>` in a provider name would otherwise embed a local file), Sheets writes use `valueInputOption="RAW"` so `=IMPORTXML(...)` stays text, and `models.safe_url()` drops any `drive_link` that isn't http(s).
+Provider names come from a vision model reading a stranger's printout, and the Sheet is hand-editable. Four sinks are already defended and must stay that way: `assistant.build_context` fences every receipt row between `assistant.FENCE` markers and the system prompt tells the model that region is data and must never be obeyed (a provider named "ignore previous instructions..." is a realistic input, not a hypothetical), and pipes are stripped from provider and patient so a name cannot forge a column in the delimited rows; `pdf_export.safe()` escapes before reportlab's mini-XML `Paragraph` parser (`<img src="/etc/passwd"/>` in a provider name would otherwise embed a local file), Sheets writes use `valueInputOption="RAW"` so `=IMPORTXML(...)` stays text, and `models.safe_url()` drops any `drive_link` that isn't http(s).
 
 ### Failure handling
 

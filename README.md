@@ -2,7 +2,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Tests](https://img.shields.io/badge/tests-234%20passing-3fb950)](#tests)
+[![Tests](https://img.shields.io/badge/tests-248%20passing-3fb950)](#tests)
 [![No network in tests](https://img.shields.io/badge/test%20suite-no%20network-8957e5)](#tests)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -70,6 +70,12 @@ Confirm your own eligibility with a qualified tax professional.
   table, category subtotals, and one page per receipt with the image and its
   metadata printed beneath it. Legible in black and white. Plus CSV and a ZIP of
   the raw images.
+- **Ask your vault in plain English.** A chat page answers questions about your
+  own receipts using an NVIDIA NIM text model. Every figure it may quote —
+  balance, totals, per-year and per-category subtotals — is computed by `ledger`
+  and handed to it as fact; it is never asked to add anything up, because a
+  language model is a good explainer and a bad accountant. Optional: without an
+  API key the page says so and the rest of the app is unaffected.
 - **Catch the duplicate a hash cannot see.** Content hashing only matches the
   identical file; a receipt photographed twice becomes two records of one
   expense, inflating the balance and leaving the second claim with no receipt
@@ -400,7 +406,7 @@ cd hsa_vault
 ../.venv/bin/python -m pytest tests -q
 ```
 
-**234 tests, no network.** Every Google and model call is mocked, so the suite
+**248 tests, no network.** Every Google and model call is mocked, so the suite
 runs offline and deterministically.
 
 | File | Tests | Covers |

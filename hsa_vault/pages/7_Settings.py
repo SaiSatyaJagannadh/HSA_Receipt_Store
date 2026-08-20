@@ -46,6 +46,11 @@ with st.form("settings"):
         "API key", value=settings.nvidia_api_key, type="password",
         help="Leave blank to disable extraction. Manual entry always works.",
     )
+    nvidia_chat_model = st.text_input(
+        "Chat model (Ask page)",
+        value=settings.nvidia_chat_model,
+        help="Text-only model for the Ask page. Vision models work but are much slower.",
+    )
     nvidia_model = c4.text_input(
         "Model", value=settings.nvidia_model,
         help="Any NVIDIA NIM vision model, e.g. meta/llama-3.2-90b-vision-instruct.",
@@ -84,6 +89,7 @@ with st.form("settings"):
                 inbox_folder_id=inbox_folder_id.strip(),
                 nvidia_api_key=nvidia_api_key.strip(),
                 nvidia_model=nvidia_model.strip(),
+                nvidia_chat_model=nvidia_chat_model.strip(),
                 default_payment_method=default_payment_method,
                 default_patient=default_patient.strip(),
                 projection_rate=float(projection_rate),
