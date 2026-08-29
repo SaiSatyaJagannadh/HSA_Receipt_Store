@@ -40,6 +40,25 @@ New columns go on the **end**, never inserted. `read_tab` maps values positional
 
 **A receipt can own more than one Drive file.** `drive_file_id` is page one; `extra_file_ids` is the rest. `store.detach_page` removes one page: it archives the file rather than deleting it, and if the page removed is `drive_file_id` it promotes the next one and refreshes `drive_link`, because that field backs the Drive link, the packet's first image and the ZIP filename. Detaching the last remaining page raises `store.LastPage` — a receipt with no document is the one state this vault exists to prevent, and archiving the receipt is the operation actually intended. Anything that touches a receipt's files must use `store._all_file_ids`, not `drive_file_id` alone — `archive_receipt` and `restore_receipt` would otherwise strand half the pages in the wrong folder, and `find_orphans` would report page two as unindexed on every launch, forever.
 
+### A hand-entered receipt has no file, and that is deliberate
+
+`pages/9_Manual_Entry.py` writes a `receipts` row straight through `store.save_receipt`
+with no Drive upload — for the receipt that never had a usable photo. It is the one
+sanctioned way to create a row with an empty `drive_file_id`, and it does not weaken
+`store.detach_page`'s refusal to strip a receipt down to nothing: that guard is about
+not *destroying* the only evidence there is.
+
+Two consequences to keep intact. `file_hash` is synthesized from
+`manual|service_date|provider|amount|patient` rather than left blank: it is required by
+`Receipt.validate()` and it is what `ledger.is_duplicate` matches on, so a blank would
+silently opt hand-entry out of duplicate detection — on exactly the route duplicates
+come from, since typing the same expense twice leaves no identical bytes to catch.
+And `store.attach_pages` promotes the *first* file attached to a receipt that has none
+into `drive_file_id`/`drive_link` instead of filing it under `extra_file_ids`, because
+those two fields back the Drive link, the packet's first image, the ZIP filename, and
+`ledger.packet_gaps`' "no image" check — the original would otherwise upload and the
+receipt would still read as undocumented. `tests/test_manual_entry.py` pins both.
+
 ### Two payment methods, one balance
 
 `hsa_card` receipts are audit documentation only and never count toward the claimable balance; `out_of_pocket` receipts accumulate into it. Confusing the two causes double-claiming, which is the most expensive bug this app can have. `Receipt.claimable` returns 0 for deleted, hsa_card, or fully-reimbursed receipts. Partial reimbursements leave the remainder claimable.

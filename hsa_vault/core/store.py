@@ -318,16 +318,27 @@ def attach_pages(receipt: Receipt, pages: list[tuple[bytes, str]], reason: str =
 
     Uploads first, records after: a failure leaves an unindexed file that Bulk
     Import can adopt, never a row citing a file that was never stored.
+
+    A receipt with no files at all — one typed in by hand on the Manual entry
+    page — gets its first attachment as page *one*, not as an extra page.
+    `drive_file_id` and `drive_link` back the Drive link, the packet's first
+    image and the ZIP filename, so filing them under `extra_file_ids` would
+    leave the receipt still reading as "no image" after its original had in
+    fact been stored.
     """
     if not pages:
         return receipt
     _, drive = clients()
     folder = drive.archive_folder() if receipt.deleted else _home_folder(drive, receipt)
-    start = len(_all_file_ids(receipt)) + 1
-    new_ids = [
-        drive.upload(data, f"p{n}__{canonical_filename(receipt, name)}", folder)["id"]
-        for n, (data, name) in enumerate(pages, start=start)
-    ]
+    new_ids = []
+    for n, (data, name) in enumerate(pages, start=len(_all_file_ids(receipt)) + 1):
+        canonical = canonical_filename(receipt, name)
+        uploaded = drive.upload(data, canonical if n == 1 else f"p{n}__{canonical}", folder)
+        if n == 1:
+            receipt.drive_file_id = uploaded["id"]
+            receipt.drive_link = uploaded.get("webViewLink", "")
+        else:
+            new_ids.append(uploaded["id"])
     receipt.extra_file_ids = [*receipt.extra_file_ids, *new_ids]
     receipt.record_edit(
         {"extra_file_ids": len(receipt.extra_file_ids)}, note=reason or "pages attached"

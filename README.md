@@ -45,6 +45,11 @@ Confirm your own eligibility with a qualified tax professional.
   vision model, returning `null` rather than guessing, and listing what was unclear.
 - **Confirm** every extraction in a form before anything is written. Nothing
   auto-commits.
+- **Type one in by hand** on the Manual entry page when there is no usable photo
+  — an emailed total, paper long since lost, a back-fill from a statement, or a
+  day the vision model is down. Same fields, same row, same editing; the only
+  difference is that no document is attached, which the audit-packet check
+  reports until you add one from Receipts.
 - **Group pages.** A long receipt photographed in halves, or a front and back,
   is ticked as one receipt: the images are read together in a single model call,
   saved as one record, and every image is kept in Drive. Saved separately, each
@@ -454,7 +459,7 @@ hsa_vault/
   app.py                  Dashboard
   .streamlit/config.toml  Binds to loopback; disables telemetry
   pages/                  Upload, Receipts, Reimbursements, Contributions,
-                          Export, Bulk Import, Settings
+                          Export, Bulk Import, Settings, Ask, Manual entry
   core/
     auth.py               Fail-closed login gate for hosted deployments
     config.py             .env + settings.json, Google credentials
