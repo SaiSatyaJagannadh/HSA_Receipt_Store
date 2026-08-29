@@ -18,7 +18,7 @@ from streamlit.testing.v1 import AppTest
 from core import config, store
 from core.models import Receipt
 
-RECEIPTS_PAGE = str(Path(__file__).resolve().parents[1] / "pages" / "2_Receipts.py")
+RECEIPTS_PAGE = str(Path(__file__).resolve().parents[1] / "pages" / "3_Receipts.py")
 
 
 def make_receipt() -> Receipt:

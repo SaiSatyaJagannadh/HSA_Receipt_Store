@@ -40,24 +40,39 @@ New columns go on the **end**, never inserted. `read_tab` maps values positional
 
 **A receipt can own more than one Drive file.** `drive_file_id` is page one; `extra_file_ids` is the rest. `store.detach_page` removes one page: it archives the file rather than deleting it, and if the page removed is `drive_file_id` it promotes the next one and refreshes `drive_link`, because that field backs the Drive link, the packet's first image and the ZIP filename. Detaching the last remaining page raises `store.LastPage` — a receipt with no document is the one state this vault exists to prevent, and archiving the receipt is the operation actually intended. Anything that touches a receipt's files must use `store._all_file_ids`, not `drive_file_id` alone — `archive_receipt` and `restore_receipt` would otherwise strand half the pages in the wrong folder, and `find_orphans` would report page two as unindexed on every launch, forever.
 
-### A hand-entered receipt has no file, and that is deliberate
+### A hand-entered receipt may have no file, and that is deliberate
 
-`pages/9_Manual_Entry.py` writes a `receipts` row straight through `store.save_receipt`
-with no Drive upload — for the receipt that never had a usable photo. It is the one
+`pages/2_Manual_Entry.py` takes typed values with no extraction call. A document is
+optional: attach one and it goes through `store.commit_receipt` exactly as an upload
+does, save without one and `store.save_receipt` writes the row alone. That is the one
 sanctioned way to create a row with an empty `drive_file_id`, and it does not weaken
-`store.detach_page`'s refusal to strip a receipt down to nothing: that guard is about
+`store.detach_page`'s refusal to strip a receipt down to nothing — that guard is about
 not *destroying* the only evidence there is.
 
-Two consequences to keep intact. `file_hash` is synthesized from
-`manual|service_date|provider|amount|patient` rather than left blank: it is required by
-`Receipt.validate()` and it is what `ledger.is_duplicate` matches on, so a blank would
-silently opt hand-entry out of duplicate detection — on exactly the route duplicates
-come from, since typing the same expense twice leaves no identical bytes to catch.
-And `store.attach_pages` promotes the *first* file attached to a receipt that has none
-into `drive_file_id`/`drive_link` instead of filing it under `extra_file_ids`, because
-those two fields back the Drive link, the packet's first image, the ZIP filename, and
-`ledger.packet_gaps`' "no image" check — the original would otherwise upload and the
-receipt would still read as undocumented. `tests/test_manual_entry.py` pins both.
+**The hash depends on which route was taken, and must.** With files in hand the receipt
+is keyed by `sha256` of the bytes, the same as Upload, so the identical photo cannot be
+filed once from each page. With nothing attached it falls back to a synthesized
+`manual|service_date|provider|amount|patient` digest rather than a blank: `file_hash` is
+required by `Receipt.validate()` and is what `ledger.is_duplicate` matches on, so a blank
+would silently opt hand-entry out of duplicate detection — on exactly the route
+duplicates come from, since typing the same expense twice leaves no identical bytes to
+catch.
+
+**`store.attach_pages` promotes the first file attached to a receipt that has none** into
+`drive_file_id`/`drive_link` instead of filing it under `extra_file_ids`. Those two fields
+back the Drive link, the packet's first image, the ZIP filename, and `ledger.packet_gaps`'
+"no image" check, so the original would otherwise upload and the receipt would still read
+as undocumented.
+
+**Provider, patient and a non-zero amount are required here and nowhere else.** The
+checks live on the page, not in `Receipt.validate()`: the Sheet is hand-editable and
+rows already exist with a blank provider — an extraction that could not read one saves
+that way by design — so tightening the shared validator would make those rows unsavable
+from the Receipts editor, breaking editing for the receipts most in need of it. The
+amount is an `st.number_input` that opens at `0.00`, which is why 0.00 is refused: a
+defaulted figure is only safe when forgetting to change it cannot file a wrong number.
+`money()` still runs on the way out, so the float the widget returns never reaches the
+Sheet. `tests/test_manual_entry.py` pins all of it.
 
 ### Two payment methods, one balance
 
