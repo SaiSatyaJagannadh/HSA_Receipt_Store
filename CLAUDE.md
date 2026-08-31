@@ -6,12 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-All commands run from `hsa_vault/`, not the repo root. The venv lives at the repo root, so it's `../.venv/bin/...`.
+Two projects live here: the Streamlit app in `hsa_vault/` and a SwiftUI client in `ios/`. Neither shares code with the other — see "One balance rule, two languages" below for the one thing they do share.
+
+Python commands run from `hsa_vault/`, not the repo root. The venv lives at the repo root, so it's `../.venv/bin/...`.
 
 ```sh
 cd hsa_vault
 ../.venv/bin/streamlit run app.py                  # run the app
-../.venv/bin/python -m pytest tests -q             # full suite (248, no network)
+../.venv/bin/python -m pytest tests -q             # full suite (275, no network)
 ../.venv/bin/python -m pytest tests/test_ledger.py -q          # one file
 ../.venv/bin/python -m pytest tests/test_edit_flow.py -q -k provider   # one test
 ../.venv/bin/python -m scripts.bootstrap_sheet --create        # create the Sheet, grant consent
@@ -20,7 +22,17 @@ cd hsa_vault
 
 Scripts must run as `python -m scripts.x`, not `python scripts/x.py` — they import `core` absolutely, which needs `hsa_vault/` itself on `sys.path` (as a plain script it's `scripts/` instead, and the import fails). `tests/conftest.py` does the equivalent for tests.
 
-There is no linter or formatter configured. Match the surrounding style.
+Swift commands run from `ios/HSAVaultCore/`:
+
+```sh
+cd ios/HSAVaultCore
+swift build                    # compiles the package, SwiftUI views included
+swift run HSAVaultCoreChecks   # the balance-rule checks
+```
+
+There is no Xcode on this machine, so no iOS SDK and no simulator. Building for the macOS host is deliberate and is what makes the view code verifiable rather than merely written — SwiftUI is identical on both platforms for everything used here. `HSAVaultCoreChecks` is an executable target with `assert`s, not XCTest, so it needs no Xcode at all; run it after any change to `Ledger.swift`.
+
+There is no linter or formatter configured for either project. Match the surrounding style.
 
 ## Architecture
 
@@ -73,6 +85,14 @@ amount is an `st.number_input` that opens at `0.00`, which is why 0.00 is refuse
 defaulted figure is only safe when forgetting to change it cannot file a wrong number.
 `money()` still runs on the way out, so the float the widget returns never reaches the
 Sheet. `tests/test_manual_entry.py` pins all of it.
+
+### One balance rule, two languages
+
+`ios/` is a native SwiftUI client, currently screens plus the balance rule with no Google auth behind them yet. Nothing in `hsa_vault/` ports — Streamlit is server-rendered Python with no iOS target, so every page is throwaway. What crosses the boundary is the **contract**, and only one part of it is dangerous to approximate.
+
+`ios/.../Sources/HSAVaultCore/Ledger.swift` is a hand port of `core/ledger.py` plus `Receipt.claimable` from `core/models.py`, and `Sources/HSAVaultCoreChecks/main.swift` mirrors `tests/test_ledger.py` case for case. **Changing the balance rule means changing it in both places in the same commit.** A client that disagrees with the Python app about the claimable balance does not look broken — it shows a confident number for the same Sheet, and the difference between the two is medical dollars claimed from the HSA twice. That is the same failure as confusing `hsa_card` with `out_of_pocket`, reached from a different direction.
+
+The port keeps the money rules too: `Decimal` with `NSDecimalRound(..., 2, .plain)`, Foundation's equivalent of `money()`'s ROUND_HALF_UP. Never `Double` on either side.
 
 ### Two payment methods, one balance
 
