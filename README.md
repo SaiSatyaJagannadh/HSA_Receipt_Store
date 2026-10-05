@@ -1,4 +1,18 @@
-# HSAVault
+<div align="center">
+
+# 🧾 HSAVault — Personal HSA Receipt Vault
+
+### Snap a receipt, let a vision model read it, and keep a CPA-ready record in your own Google Drive — for decades.
+
+[![Live Demo](https://img.shields.io/badge/▶_Live_Demo-Try_it_now-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://hsavault-sai.streamlit.app/)
+
+
+
+**👉 [hsavault-sai.streamlit.app](https://hsavault-sai.streamlit.app/)**
+
+</div>
+
+---
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
@@ -513,3 +527,11 @@ nothing else in the codebase knows which model is in use.
 The general lesson both share: extraction is the least trustworthy part of the
 system, so no extracted value is ever written without a human confirming it, and
 the app degrades to manual entry rather than blocking a save.
+
+---
+
+<div align="center">
+
+**Built by [Sai Satya Jagannadh Doddipatla (DJ)](https://saisatyajagannadh.github.io/PersonalPortfolio/)** · ⭐ Star the repo if it helped
+
+</div>
